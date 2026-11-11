@@ -15,6 +15,8 @@ import {
   isAriaConnectCommand,
   runPythonSvlCoreReport,
 } from './src/lib/svlAriaBridge';
+import { hasAllowedWebSocketOrigin, hasValidOperatorSession, isLoopbackAddress, isLoopbackHost, isOperatorAccessAllowed } from './src/lib/operatorAccess.mjs';
+import { requireGitHubWriteToken } from './src/lib/githubWriteAuth';
 import { resolveVisionModel } from './src/kernel/visionModel';
 import type {
   AgentName,
@@ -226,13 +228,11 @@ if (!db.sessions.some((s) => !s.archived)) {
 }
 
 const heartbeats = new Map<AgentName, { workerId: string; lastSeen: string; pid?: number }>();
-// Restore Aria connection state if previously connected via command in persisted DB
-if (db.svlCoreState?.ariaConnected && db.svlCoreState.ariaConnectedAt) {
-  heartbeats.set('Aria', {
-    workerId: `svl-core-aria-pid-${db.svlCoreState.ariaPid || process.pid}`,
-    lastSeen: db.svlCoreState.ariaConnectedAt,
-    pid: db.svlCoreState.ariaPid || process.pid,
-  });
+// A one-shot report does not prove that an Aria worker is running.
+if (db.svlCoreState) {
+  db.svlCoreState.ariaConnected = false;
+  db.svlCoreState.ariaPid = null;
+  db.svlCoreState.ariaConnectedAt = null;
 }
 
 function persist() {
@@ -246,6 +246,7 @@ function persist() {
 const app = express();
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '6mb' }));
+app.use(requireGitHubWriteToken);
 app.use((_req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'no-referrer');
@@ -288,30 +289,10 @@ function isHttpsRequest(req: express.Request): boolean {
 
 function getOperatorAuthState(req: express.Request): OperatorAuthState {
   const cookieHeader = String(req.header('cookie') || '');
-  const cookieEntry = cookieHeader
-    .split(';')
-    .map((x) => x.trim())
-    .find((x) => x.startsWith('svl_session='));
-  const sessionTicket = cookieEntry ? cookieEntry.slice('svl_session='.length) : '';
-  const expiry = operatorSessions.get(sessionTicket) || 0;
-  if (expiry > Date.now()) {
-    return {
-      tokenConfigured: operatorSecret.length >= 32,
-      tokenLength: operatorSecret.length,
-      authenticated: true,
-      sessionSource: 'cookie',
-      httpsDetected: isHttpsRequest(req),
-    };
-  }
+  const validSession = hasValidOperatorSession(cookieHeader, operatorSessions);
   const explicitTokenRequired = Boolean((process.env.SVL_OPERATOR_TOKEN || '').trim().length >= 32);
-  if (!explicitTokenRequired) {
-    return {
-      tokenConfigured: operatorSecret.length >= 32,
-      tokenLength: operatorSecret.length,
-      authenticated: true,
-      sessionSource: 'local_loopback',
-      httpsDetected: isHttpsRequest(req),
-    };
+  if (validSession || (!explicitTokenRequired && !req.header('x-forwarded-for') && isLoopbackAddress(req.socket.remoteAddress) && isLoopbackHost(req.header('host')))) {
+    return { tokenConfigured: operatorSecret.length >= 32, tokenLength: operatorSecret.length, authenticated: true, sessionSource: validSession ? 'cookie' : 'local_loopback', httpsDetected: isHttpsRequest(req) };
   }
   return {
     tokenConfigured: operatorSecret.length >= 32,
@@ -588,22 +569,17 @@ function getAgentStates(): AgentState[] {
   const now = Date.now();
   return AGENTS.map((name) => {
     const beat = heartbeats.get(name);
-    // If Aria was explicitly connected via `podłącz moje ai aria`, keep her verified state active
-    const isAriaVerified = name === 'Aria' && Boolean(db.svlCoreState?.ariaConnected);
-    const beatFresh = Boolean(beat && now - new Date(beat.lastSeen).valueOf() < 90000);
-    const connected = isAriaVerified || beatFresh;
+    const heartbeatAge = beat ? now - new Date(beat.lastSeen).valueOf() : Number.POSITIVE_INFINITY;
+    const connected = heartbeatAge >= -5000 && heartbeatAge < 90000;
     return {
       name,
       id: name === 'Aria' ? 'si_1' : name,
       connected,
-      lastSeen: beat?.lastSeen || (isAriaVerified ? db.svlCoreState?.ariaConnectedAt || null : null),
-      workerId: beat?.workerId || (isAriaVerified ? 'svl-core-5.6.0-quantumwheel' : null),
-      pid: beat?.pid ?? (isAriaVerified ? db.svlCoreState?.ariaPid ?? null : null),
-      kernelVersion: isAriaVerified ? '5.6.0-QuantumWheel' : null,
-      roleNote:
-        name === 'Aria' && isAriaVerified
-          ? 'Podłączona przez SVLSystemKernel (TopologicalInfinityEngine, c=2.5)'
-          : 'Oczekuje na polecenie podłączenia lub zewnętrzny heartbeat workera',
+      lastSeen: beat?.lastSeen || null,
+      workerId: beat?.workerId || null,
+      pid: beat?.pid ?? null,
+      kernelVersion: null,
+      roleNote: 'Status online wymaga świeżego heartbeat workera',
     };
   });
 }
@@ -770,16 +746,12 @@ async function executeAriaConnect(sessionId?: string): Promise<{
 }> {
   const { report, rawJson, pid } = await runPythonSvlCoreReport(process.cwd());
   db.svlCoreState = {
-    ariaConnected: true,
-    ariaPid: pid,
-    ariaConnectedAt: report.ariaConnectedAt,
+    ariaConnected: false,
+    ariaPid: null,
+    ariaConnectedAt: null,
     lastReport: report,
   };
-  heartbeats.set('Aria', {
-    workerId: `svl-core-aria-pid-${pid}`,
-    lastSeen: report.ariaConnectedAt || new Date().toISOString(),
-    pid,
-  });
+
 
   let createdMsg: Message | undefined;
   const targetSession =
@@ -792,7 +764,7 @@ async function executeAriaConnect(sessionId?: string): Promise<{
         {
           type: 'status',
           title: `Aria (si_1) · ${report.System}`,
-          status: 'online',
+          status: 'info',
           text: `Operator: ${report.Operator} · Wydajność: ${report.Performance} · PID: ${pid}`,
         },
         {
@@ -1653,6 +1625,11 @@ const wss = new WebSocketServer({ noServer: true });
 httpServer.on('upgrade', (request, socket, head) => {
   const parsedUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   if (parsedUrl.pathname === '/ws/terminal') {
+    const explicitTokenRequired = Boolean((process.env.SVL_OPERATOR_TOKEN || '').trim().length >= 32);
+    if (!hasAllowedWebSocketOrigin(request.headers.origin, request.headers.host) || !isOperatorAccessAllowed({ cookieHeader: String(request.headers.cookie || ''), remoteAddress: request.socket.remoteAddress, host: request.headers.host, operatorSessions, explicitTokenRequired, forwardedFor: String(request.headers['x-forwarded-for'] || '') })) {
+      socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+      return;
+    }
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit('connection', ws, request, parsedUrl);
     });
