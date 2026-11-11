@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { resolveVisionModel } from '../src/kernel/visionModel.ts';
+
+const server = await readFile(new URL('../server.ts', import.meta.url), 'utf8');
 
 function mockedOllama(models, capabilities = {}) {
   const requests = [];
@@ -19,6 +22,15 @@ function mockedOllama(models, capabilities = {}) {
   return { fetchImpl, requests };
 }
 
+test('health status reports vision only from verified model capabilities', () => {
+  const check = server.slice(
+    server.indexOf('async function checkOllamaStatus'),
+    server.indexOf('// --- DEBIAN 13 RUNTIME & HOST OBSERVER STATUS ---'),
+  );
+  assert.match(check, /resolveVisionModel/);
+  assert.match(check, /visionCapable:\s*selection\.visionSupported/);
+});
+
 test('auto chooses installed image-capable 14B uncensored without vision in its name', async () => {
   const preferred = 'my-uncensored:14b';
   const alt = 'llama3.2-vision:11b';
@@ -31,6 +43,7 @@ test('auto chooses installed image-capable 14B uncensored without vision in its 
   assert.equal(result.reachable, true);
   assert.equal(result.visionSupported, true);
   assert.equal(result.modelInstalled, true);
+  assert.deepEqual(result.models, ['some-text:32b', alt, preferred]);
   assert.ok(requests.some(({ uri }) => uri.endsWith('/api/show')));
   assert.ok(!preferred.toLowerCase().includes('vision'), 'model name must not imply image capability');
 });
@@ -56,6 +69,7 @@ test('explicit model tag must exist and report vision support', async () => {
   assert.equal(textOnly.model, null);
   assert.equal(textOnly.modelInstalled, true);
   assert.equal(textOnly.visionSupported, false);
+  assert.deepEqual(textOnly.models, ['vision:14b']);
 });
 
 test('unreachable Ollama is not reported as installed or online', async () => {
