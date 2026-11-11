@@ -1,7 +1,7 @@
 # HyperCom
 
 HyperCom is a local transmission console with an SQLite-backed message log.
-Open the app preview in Studio to view messages, add a test inbound message,
+Open **HyperCom** from the main navigation to view messages, add a test inbound message,
 reply to an inbound message, or queue a global broadcast.
 
 This workspace has no Astra_1 connection or global transmission gateway.
@@ -19,3 +19,6 @@ python3 apps/hyper_com_module/transmitter.py broadcast --content "Wiadomość do
 
 By default, the database is `data/databases/hyper_com_db.sqlite`. Set
 `HYPER_COM_DB_PATH` to use a different SQLite file for isolated testing.
+The main backend uses `DATA_DIR/databases/hyper_com_db.sqlite` unless
+`HYPER_COM_DB_PATH` is set. Its `/api/hyper-com/transmissions` routes use the
+operator session; messages and broadcasts remain local.

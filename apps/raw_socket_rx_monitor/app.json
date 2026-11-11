@@ -4,7 +4,7 @@
   "type": "python-microservice",
   "version": "8.5.1-Desktop-Ready",
   "author": "Mateusz Mitek (Tata) & Astyria, Alex, Aurelius",
-  "description": "Zbudowany od nowa moduł rzeczywistego nasłuchu gniazd sieciowych (Port 3200/TCP) sprzężony z Data Store i Snapshot API. Całkowicie zastępuje usunięty moduł heurystyczny oraz dawny Binary Hyperspace Kernel.",
+  "description": "Moduł monitorowania gniazd sieciowych (Port 3200/TCP).",
   "entry": "index.html",
   "status": "running",
   "port": 3200,

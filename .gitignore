@@ -8,4 +8,6 @@ coverage/
 !.env.example
 data/.operator_token
 data/workspace/
+data/fleet-registry.json
+data/databases/hyper_com_db.sqlite*
 debian13/system/__pycache__/

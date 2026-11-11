@@ -22,19 +22,6 @@ DEFAULT_STORE = {
 }
 
 
-def migrate_model_config(config: dict[str, Any]) -> bool:
-    migrated = False
-    for legacy_model_key in ("dialogue_engine", "ai_provider", "ai_model", "live_ai_engine"):
-        if legacy_model_key in config:
-            del config[legacy_model_key]
-            migrated = True
-    mode = config.get("mode")
-    if isinstance(mode, str) and ("ollama" in mode.lower() or "gemini" in mode.lower()):
-        config["mode"] = DEFAULT_STORE["config"]["mode"]
-        migrated = True
-    return migrated
-
-
 def load_store() -> dict[str, Any]:
     if not STORE_PATH.exists():
         return json.loads(json.dumps(DEFAULT_STORE))
@@ -49,8 +36,6 @@ def load_store() -> dict[str, Any]:
         raise ValueError("DATA_STORE.config must be an object")
     if not isinstance(store["update_history"], list) or not isinstance(store["chat_history"], list):
         raise ValueError("DATA_STORE histories must be arrays")
-    if migrate_model_config(store["config"]):
-        save_store(store)
     return store
 
 
@@ -96,14 +81,12 @@ def main() -> None:
             raise ValueError("DATA_STORE.config must be an object")
         if not isinstance(store.get("update_history"), list) or not isinstance(store.get("chat_history"), list):
             raise ValueError("DATA_STORE histories must be arrays")
-        migrate_model_config(store["config"])
         save_store(store)
     elif args.action == "config":
         config = json.loads(args.config_json)
         if not isinstance(config, dict):
             raise ValueError("config_json must be a JSON object")
         store["config"].update(config)
-        migrate_model_config(store["config"])
         if args.version_tag:
             store["config"]["sys_version"] = args.version_tag
             add_update(store, args.version_tag, args.desc)

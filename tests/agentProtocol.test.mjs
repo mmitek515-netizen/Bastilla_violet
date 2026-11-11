@@ -2,11 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   buildAgentProtocolReplies,
+  ASTYRIA_MISSION_ACTIONS,
   hasPersistedAgentProtocolTranscript,
   parseChatProtocolCommand,
   TRIAD_AGENT_NAMES,
   validateAgentProtocolRequest,
 } from '../src/kernel/agentProtocol.ts';
+import { TAB_IDS } from '../src/components/Navigation.tsx';
 
 const store = {
   sys_version: '9.1.0',
@@ -14,6 +16,13 @@ const store = {
   update_history: [{ wersja: '9.0.0', data: '2026-01-01', opis: 'Initial test release' }],
   chat_history: [{ agent: 'Alex', tekst: 'test' }],
 };
+
+test('snapshot-related mission actions are not offered', () => {
+  assert.equal(TAB_IDS.includes('temporal'), false);
+  for (const action of ['vm_snapshot_now', 'repair_schemas', 'sync_versions', 'deep_scan']) {
+    assert.equal(ASTYRIA_MISSION_ACTIONS.includes(action), false);
+  }
+});
 
 test('validates the explicit command schema and rejects unknown or invalid values', () => {
   assert.equal(validateAgentProtocolRequest({ command: 'SYSTEM_STATUS', agent: 'Alex' }).valid, true);

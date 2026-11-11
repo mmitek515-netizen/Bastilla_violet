@@ -25,7 +25,7 @@ test('factory defaults disable root automation and keep runtime history empty', 
   assert.equal(INITIAL_DATA_STORE.config.continuous_mission, 'INACTIVE');
   assert.equal(INITIAL_DATA_STORE.config.astyria_continuous_repair, false);
   assert.equal(INITIAL_DATA_STORE.config.log_auto_repair.enabled, false);
-  assert.equal(INITIAL_DATA_STORE.config.vm_ten_system.auto_snapshot_api, 'MANUAL_ONLY');
+  assert.equal('vm_ten_system' in INITIAL_DATA_STORE.config, false);
   assert.deepEqual(INITIAL_DATA_STORE.update_history, []);
   assert.deepEqual(INITIAL_DATA_STORE.chat_history, []);
 
@@ -38,7 +38,7 @@ test('factory defaults disable root automation and keep runtime history empty', 
   assert.deepEqual(reset.chat_history, []);
 });
 
-test('migrates old model configuration without changing saved history', (t) => {
+test('reading state preserves the exact configuration and does not rewrite the file', (t) => {
   const directory = mkdtempSync(path.join(tmpdir(), 'svl-kernel-migration-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const storePath = path.join(directory, 'store.json');
@@ -54,18 +54,19 @@ test('migrates old model configuration without changing saved history', (t) => {
   };
   writeFileSync(storePath, JSON.stringify(original));
 
+  const before = readFileSync(storePath, 'utf8');
   const output = JSON.parse(runKernel(storePath, '--action', 'state'));
   const persisted = JSON.parse(readFileSync(storePath, 'utf8'));
 
-  assert.equal(output.store.config.mode, 'Local-Deterministic-Production');
-  assert.equal('ai_provider' in output.store.config, false);
-  assert.equal('ai_model' in output.store.config, false);
-  assert.equal(persisted.config.keep, 'yes');
+  assert.equal(readFileSync(storePath, 'utf8'), before);
+  assert.deepEqual(output.store.config, original.config);
+  assert.deepEqual(persisted.config, original.config);
+  assert.deepEqual(normalizeDataStore(original).config, { ...INITIAL_DATA_STORE.config, ...original.config });
   assert.deepEqual(persisted.update_history, original.update_history);
   assert.deepEqual(persisted.chat_history, original.chat_history);
 });
 
-test('does not allow model configuration to return through save or config actions', (t) => {
+test('save and config actions preserve model configuration', (t) => {
   const directory = mkdtempSync(path.join(tmpdir(), 'svl-kernel-migration-'));
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   const storePath = path.join(directory, 'store.json');
@@ -81,9 +82,7 @@ test('does not allow model configuration to return through save or config action
   };
   runKernel(storePath, '--action', 'save_store', '--store_json', JSON.stringify(incomingStore));
   let persisted = JSON.parse(readFileSync(storePath, 'utf8'));
-  assert.equal(persisted.config.mode, 'Local-Deterministic-Production');
-  assert.equal('dialogue_engine' in persisted.config, false);
-  assert.equal('live_ai_engine' in persisted.config, false);
+  assert.deepEqual(persisted, incomingStore);
 
   runKernel(
     storePath,
@@ -93,6 +92,9 @@ test('does not allow model configuration to return through save or config action
     JSON.stringify({ mode: 'Local-Ollama-Production', ai_provider: 'Ollama' }),
   );
   persisted = JSON.parse(readFileSync(storePath, 'utf8'));
-  assert.equal(persisted.config.mode, 'Local-Deterministic-Production');
-  assert.equal('ai_provider' in persisted.config, false);
+  assert.deepEqual(persisted.config, {
+    ...incomingStore.config,
+    mode: 'Local-Ollama-Production',
+    ai_provider: 'Ollama',
+  });
 });

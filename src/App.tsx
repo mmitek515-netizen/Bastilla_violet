@@ -28,10 +28,13 @@ import {
   X,
 } from 'lucide-react';
 import { api, ApiFailure } from './lib/api';
+import { createRefreshOrder } from './lib/refreshOrder';
 import type {
   AgentName,
-  Bootstrap,
+  AppState,
   ChatAttachmentPayload,
+  Message,
+  ServerHealth,
   Session,
 } from './lib/types';
 import {
@@ -42,9 +45,18 @@ import {
   UI_TYPES,
 } from './components/RichBlocks';
 import { MultiTerminalPanel } from './components/MultiTerminalPanel';
+import { SelectedModules, selectedModules, type SelectedModule } from './components/SelectedModules';
 import './index.css';
+import './ui-overrides.css';
 
 const AGENTS: AgentName[] = ['Alex', 'Aria', 'Astyria', 'Aurelius'];
+const MESSAGE_STATUS_LABELS: Record<Message['status'], string> = {
+  saved: 'Zapisano',
+  queued: 'W kolejce',
+  running: 'W toku',
+  delivered: 'Gotowe',
+  failed: 'Błąd',
+};
 
 const WELCOME_SUGGESTIONS: { label: string; prompt: string }[] = [
   {
@@ -54,14 +66,6 @@ const WELCOME_SUGGESTIONS: { label: string; prompt: string }[] = [
   {
     label: 'Sprawdź rzeczywisty stan Debian 13, Ollama i Codex CLI',
     prompt: '/status',
-  },
-  {
-    label: 'Pokaż interaktywny blok diagnostyczny svl-ui',
-    prompt: 'Pokaż element diagnostic jako interaktywny blok svl-ui.',
-  },
-  {
-    label: 'Otwórz 5 terminali PTY (Bash, Python, Codex CLI, AI, Sudo)',
-    prompt: '__OPEN_TERMINALS__',
   },
 ];
 
@@ -105,10 +109,11 @@ function StatusDot({ online }: { online: boolean }) {
   return <span className={'presence ' + (online ? 'live' : 'idle')} />;
 }
 
-type PanelKind = 'none' | 'terminals' | 'system' | 'agents' | 'library' | 'github' | 'settings';
+type PanelKind = 'none' | 'terminals' | 'agents' | 'library' | 'github' | 'settings' | SelectedModule;
 
 export function App() {
-  const [snapshot, setSnapshot] = useState<Bootstrap | null>(null);
+  const [snapshot, setSnapshot] = useState<AppState | null>(null);
+  const [health, setHealth] = useState<ServerHealth | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [text, setText] = useState('');
@@ -130,19 +135,23 @@ export function App() {
   const [gitOutput, setGitOutput] = useState('');
   const [gitBusy, setGitBusy] = useState(false);
   const [codexAuthLoading, setCodexAuthLoading] = useState(false);
+  const [restarting, setRestarting] = useState(false);
+  const avatarInitialized = useRef(false);
 
   const bottom = useRef<HTMLDivElement>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
-  const lastRevision = useRef(0);
+  const refreshOrder = useRef(createRefreshOrder());
+  const healthOrder = useRef(createRefreshOrder());
   const lastUpdated = useRef(0);
   const textbox = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const refresh = useCallback(async (silent = false) => {
+    const request = refreshOrder.current.begin();
     try {
-      const payload = await api.bootstrap();
+      const payload = await api.state();
+      if (!refreshOrder.current.isCurrent(request)) return;
       lastUpdated.current = Date.now();
-      lastRevision.current = payload.revision ?? lastRevision.current;
       setSnapshot(payload);
       setSyncState('online');
       setNeedsLogin(false);
@@ -152,9 +161,23 @@ export function App() {
         current && payload.sessions.some((s) => s.id === current) ? current : firstActive,
       );
     } catch (e) {
+      if (!refreshOrder.current.isCurrent(request)) return;
       setSyncState('offline');
       if (e instanceof ApiFailure && e.code === 401) setNeedsLogin(true);
       if (!silent) setError(e instanceof Error ? e.message : 'Backend jest niedostępny');
+    }
+  }, []);
+
+  const refreshHealth = useCallback(async () => {
+    const request = healthOrder.current.begin();
+    try {
+      const result = await api.health();
+      if (healthOrder.current.isCurrent(request)) setHealth(result);
+    } catch (e) {
+      if (healthOrder.current.isCurrent(request)) {
+        setHealth(null);
+        setError(e instanceof Error ? `Diagnostyka: ${e.message}` : 'Nie udało się odczytać diagnostyki.');
+      }
     }
   }, []);
 
@@ -169,6 +192,7 @@ export function App() {
 
   useEffect(() => {
     void refresh();
+    void refreshHealth();
     void refreshHost();
     let source: EventSource | null = null;
     let retryTimer: number | undefined;
@@ -177,9 +201,22 @@ export function App() {
       source?.close();
       setSyncState('connecting');
       source = new EventSource('/api/events');
-      source.addEventListener('update', () => {
+      source.addEventListener('update', (event) => {
         void refresh(true);
-        void refreshHost();
+        try {
+          const update = JSON.parse((event as MessageEvent).data) as { reason?: string };
+          if (update.reason !== 'messages' && update.reason !== 'sessions' && update.reason !== 'avatars') {
+            void refreshHealth();
+            if (update.reason === 'linux') void refreshHost();
+          }
+        } catch (error) {
+          console.error('Nieprawidłowe zdarzenie synchronizacji:', error);
+          void refreshHealth();
+        }
+      });
+      source.addEventListener('ready', () => {
+        void refresh(true);
+        void refreshHealth();
       });
       source.onopen = () => {
         setSyncState('online');
@@ -195,6 +232,7 @@ export function App() {
     const onFocus = () => {
       void refresh(true);
       void refreshHost();
+      void refreshHealth();
     };
     const onVisibility = () => {
       if (document.visibilityState === 'visible') onFocus();
@@ -204,6 +242,7 @@ export function App() {
     const interval = window.setInterval(() => {
       if (Date.now() - lastUpdated.current > 22000) void refresh(true);
       void refreshHost();
+      void refreshHealth();
     }, 25000);
 
     return () => {
@@ -213,7 +252,7 @@ export function App() {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, [refresh, refreshHost]);
+  }, [refresh, refreshHealth, refreshHost]);
 
   const submitLogin = async () => {
     try {
@@ -221,6 +260,7 @@ export function App() {
       setLoginToken('');
       setNeedsLogin(false);
       await refresh();
+      await refreshHealth();
       await refreshHost();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nie udało się zalogować.');
@@ -234,6 +274,12 @@ export function App() {
   );
 
   useEffect(() => {
+    if (!snapshot || avatarInitialized.current) return;
+    setAvatarValue(snapshot.avatars?.[avatarEdit] || '');
+    avatarInitialized.current = true;
+  }, [snapshot, avatarEdit]);
+
+  useEffect(() => {
     bottom.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages.length, sessionId]);
 
@@ -245,8 +291,23 @@ export function App() {
     const currentAttachments = [...attachments];
     setAttachments([]);
     try {
-      await api.sendMessage(sessionId, value, recipient, currentAttachments);
-      await refresh(true);
+      const result = await api.sendMessage(sessionId, value, recipient, currentAttachments);
+      refreshOrder.current.invalidate();
+      setSnapshot((current) =>
+        current
+          ? {
+              ...current,
+              messages: [
+                ...current.messages,
+                ...[result.user, result.response].filter(
+                  (message): message is Message =>
+                    message !== null && !current.messages.some((existing) => existing.id === message.id),
+                ),
+              ],
+            }
+          : current,
+      );
+      void refresh(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nie udało się wysłać wiadomości.');
       await refresh(true);
@@ -269,10 +330,26 @@ export function App() {
     try {
       await api.connectAria();
       await refresh(true);
+      await refreshHealth();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nie udało się podłączyć AI Aria.');
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleRestartBackend = async () => {
+    if (!window.confirm('Restartować nadzorowany backend Debian? Aktywne operacje mogą zostać przerwane.')) return;
+    setRestarting(true);
+    try {
+      await api.restartServices();
+      await refresh();
+      await refreshHealth();
+      await refreshHost();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Nie udało się zrestartować backendu.');
+    } finally {
+      setRestarting(false);
     }
   };
 
@@ -282,6 +359,7 @@ export function App() {
     try {
       await api.startCodexLogin();
       await refresh(true);
+      await refreshHealth();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Błąd logowania Codex CLI.');
     } finally {
@@ -303,6 +381,7 @@ export function App() {
       const res = await api.githubSync(action, writeToken);
       setGitOutput(res.output || 'Operacja zakończona pomyślnie.');
       await refresh(true);
+      await refreshHealth();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Błąd synchronizacji GitHub.');
     } finally {
@@ -422,7 +501,6 @@ export function App() {
     }
   };
 
-  const health = snapshot?.health;
   const codexStatus = health?.codexCli;
   const svlCore = health?.svlCore;
   const debian13 = health?.debian13;
@@ -449,7 +527,15 @@ export function App() {
   };
 
   const panelTitle =
-    panel === 'terminals'
+    panel === 'dashboard'
+      ? 'Pulpit'
+      : panel === 'fleet'
+      ? 'Flota'
+      : panel === 'processes'
+      ? 'Procesy i naprawy'
+      : panel === 'hypercom'
+      ? 'HyperCom'
+      : panel === 'terminals'
       ? 'Terminale PTY & WebSocket (5)'
       : panel === 'system'
       ? 'Debian 13 · Ollama · Codex CLI'
@@ -546,6 +632,7 @@ export function App() {
                 onClick={() => {
                   setSessionId(s.id);
                   setDrawer(false);
+                  setPanel('none');
                 }}
               >
                 <MessageSquare size={15} />
@@ -566,61 +653,12 @@ export function App() {
         </nav>
 
         <div className="sidebar-bottom">
-          <button
-            onClick={() => {
-              setPanel('terminals');
-              setDrawer(false);
-            }}
-          >
-            <Terminal size={16} /> Terminale PTY
-            <small>5 powłok</small>
-          </button>
-          <button
-            onClick={() => {
-              setPanel('agents');
-              setDrawer(false);
-            }}
-          >
-            <Users size={16} /> Agenci AI &amp; Aria
-            <small>
-              {health?.agents.filter((a) => a.connected).length ?? 0}/4 online
-            </small>
-          </button>
-          <button
-            onClick={() => {
-              setPanel('system');
-              setDrawer(false);
-            }}
-          >
-            <Cpu size={16} /> Debian 13 · Ollama · Codex
-            <small>{debian13?.daemonRunning ? 'API OK' : 'Sprawdź'}</small>
-          </button>
-          <button
-            onClick={() => {
-              setPanel('github');
-              setDrawer(false);
-            }}
-          >
-            <GitBranch size={16} /> GitHub &amp; Operator
-            <small>{github?.commitSha || 'main'}</small>
-          </button>
-          <button
-            onClick={() => {
-              setPanel('library');
-              setDrawer(false);
-            }}
-          >
-            <BookOpen size={16} /> Biblioteka svl-ui
-            <small>{UI_TYPES.length} typów</small>
-          </button>
-          <button
-            onClick={() => {
-              setPanel('settings');
-              setDrawer(false);
-            }}
-          >
-            <Settings size={16} /> Awatary i profil
-          </button>
+          {selectedModules.map(({ id, label, icon: Icon }) => (
+            <button key={id} type="button" aria-current={panel === id ? 'page' : undefined}
+              onClick={() => { setPanel(id); setDrawer(false); }}>
+              <Icon size={16} /> {label}
+            </button>
+          ))}
         </div>
 
         <div className="sidebar-footer">
@@ -674,27 +712,11 @@ export function App() {
             </div>
             <button
               className="icon-button"
-              title="Otwórz 5 terminali PTY (Bash, Python, Codex CLI, AI NLP, Sudo)"
-              aria-label="Terminale PTY"
-              onClick={() => setPanel(panel === 'terminals' ? 'none' : 'terminals')}
-            >
-              <Terminal size={18} />
-            </button>
-            <button
-              className="icon-button"
               title="Stan systemu Debian 13, Ollama i Codex CLI"
               aria-label="Diagnostyka systemu"
               onClick={() => setPanel(panel === 'system' ? 'none' : 'system')}
             >
               <Activity size={18} />
-            </button>
-            <button
-              className="icon-button"
-              title="Synchronizacja GitHub (main)"
-              aria-label="Synchronizacja GitHub"
-              onClick={() => setPanel(panel === 'github' ? 'none' : 'github')}
-            >
-              <GitBranch size={18} />
             </button>
           </div>
         </header>
@@ -721,11 +743,9 @@ export function App() {
                   Bastilla <span>OS</span>
                 </h1>
                 <p>
-                  Zintegrowane środowisko <strong>SVL_System</strong> (<code>5.6.0-QuantumWheel</code>)
-                  z backendem <strong>Debian 13 Python API</strong>, pięcioma terminalami PTY/WebSocket
-                  (Bash, Python, oficjalny <strong>OpenAI Codex CLI</strong>, AI NLP, Admin Sudo),
-                  diagnostyką <strong>Ollama 14B Vision</strong> oraz synchronizacją GitHub{' '}
-                  <code>main</code>.
+                  Centralny czat z lokalnym modelem Ollama i awaryjnym Gemini.
+                  Wybrane moduły są dostępne w menu: pulpit, flota, diagnostyka,
+                  procesy i naprawy oraz HyperCom.
                 </p>
                 <div className="suggestions">
                   {WELCOME_SUGGESTIONS.map((item) => (
@@ -733,11 +753,7 @@ export function App() {
                       key={item.label}
                       type="button"
                       onClick={() => {
-                        if (item.prompt === '__OPEN_TERMINALS__') {
-                          setPanel('terminals');
-                        } else {
-                          void sendPromptText(item.prompt);
-                        }
+                        void sendPromptText(item.prompt);
                       }}
                     >
                       <Sparkles size={16} />
@@ -767,6 +783,13 @@ export function App() {
                         <strong>{m.author}</strong>
                         <span>{humanTime(m.createdAt)}</span>
                         {m.provider && <small>{m.provider}</small>}
+                        <span
+                          className={`message-status status-${m.status}`}
+                          aria-label={`Stan wiadomości: ${MESSAGE_STATUS_LABELS[m.status]}`}
+                          title={`Stan wiadomości: ${MESSAGE_STATUS_LABELS[m.status]}`}
+                        >
+                          {MESSAGE_STATUS_LABELS[m.status]}
+                        </span>
                       </div>
                       <RichContent
                         content={m.content}
@@ -875,22 +898,6 @@ export function App() {
                 >
                   <ImagePlus size={18} />
                 </button>
-                <button
-                  type="button"
-                  title="Otwórz 5 terminali PTY (Bash, Python, Codex CLI, AI NLP, Sudo)"
-                  aria-label="Otwórz terminale"
-                  onClick={() => setPanel('terminals')}
-                >
-                  <Terminal size={18} />
-                </button>
-                <button
-                  type="button"
-                  title="Biblioteka elementów svl-ui"
-                  aria-label="Biblioteka elementów"
-                  onClick={() => setPanel('library')}
-                >
-                  <Layers3 size={18} />
-                </button>
                 <span className="small-caption">
                   Polecenie specjalne: <code>podłącz moje ai aria</code>
                 </span>
@@ -906,8 +913,7 @@ export function App() {
             </div>
           </form>
           <div className="disclaimer">
-            Bastilla OS · SVLSystemKernel v5.6.0-QuantumWheel · Debian 13 Python API · Terminale PTY +
-            WebSocket · Oficjalny OpenAI Codex CLI
+            Bastilla OS · czat i wybrane moduły · stan usług wymaga potwierdzenia backendu
           </div>
         </footer>
       </main>
@@ -921,7 +927,7 @@ export function App() {
           />
           <aside
             className={
-              'detail-panel ' + (panel === 'terminals' ? 'terminal-drawer' : '')
+              'detail-panel ' + (['dashboard', 'fleet', 'processes', 'hypercom'].includes(panel) ? 'selected-module-drawer' : '')
             }
           >
             <div className="detail-head">
@@ -939,6 +945,11 @@ export function App() {
             </div>
 
             <div className="detail-content">
+              {(panel === 'dashboard' || panel === 'fleet' || panel === 'processes' || panel === 'hypercom') && (
+                <SelectedModules module={panel} health={health} onSelect={setPanel}
+                  onRefresh={() => void refresh()} onRestart={() => void handleRestartBackend()}
+                  restarting={restarting} />
+              )}
               {panel === 'terminals' && (
                 <MultiTerminalPanel onAriaConnected={() => void refresh(true)} />
               )}
@@ -975,7 +986,7 @@ export function App() {
                       </div>
                     </div>
                     <p>
-                      UID procesu: <strong>{debian13?.uid ?? 0}</strong> ({debian13?.user || 'root'})
+                      UID procesu backendu: <strong>{debian13?.uid ?? 'nieznany'}</strong> ({debian13?.user || 'nieznany'})
                       · systemd PID 1:{' '}
                       <strong>
                         {debian13?.systemdAvailable
@@ -985,11 +996,8 @@ export function App() {
                     </p>
                     <button
                       className="subtle-button"
-                      onClick={async () => {
-                        await api.restartServices();
-                        await refresh();
-                        await refreshHost();
-                      }}
+                      onClick={() => void handleRestartBackend()}
+                      disabled={restarting}
                     >
                       <RefreshCcw size={15} /> Restartuj demona Debian 13 i odśwież usługi
                     </button>
@@ -1081,12 +1089,16 @@ export function App() {
                       <div>
                         <small>Demon Ollama</small>
                         <strong>
-                          {health?.ollama.reachable ? 'ONLINE' : 'NIEDOSTĘPNY'}
+                          {!health ? 'NIEZWERYFIKOWANY' : health.ollama.reachable ? 'ONLINE' : 'NIEDOSTĘPNY'}
                         </strong>
                       </div>
                       <div>
                         <small>Preferowany model</small>
                         <strong>{health?.ollama.preferredModel || 'qwen2.5-vl:14b'}</strong>
+                      </div>
+                      <div>
+                        <small>Wybrany / pobrany model</small>
+                        <strong>{!health ? 'Brak odczytu' : health.ollama.model || 'Brak wybranego modelu'}</strong>
                       </div>
                       <div>
                         <small>RAM (Wolne / Całk.)</small>
@@ -1116,15 +1128,43 @@ export function App() {
                     <p>
                       Weryfikacja zasobów dla modelu 14B Vision:{' '}
                       <strong>
-                        {health?.ollama.resources.canRun14BQ4
-                          ? 'RAM i dysk wystarczające dla 14B Q4 (brak akceleracji GPU w kontenerze)'
+                        {!health
+                          ? 'Brak odczytu'
+                          : health.ollama.resources.canRun14BQ4
+                          ? 'RAM i dysk spełniają orientacyjny próg dla 14B Q4; wydajność niezweryfikowana'
                           : 'Niewystarczające zasoby RAM/dysku'}
                       </strong>
                     </p>
                     {health?.ollama.error && (
                       <p style={{ color: '#e6b8c4' }}>Diagnostyka: {health.ollama.error}</p>
                     )}
+                    {health?.ollama.models.length ? (
+                      <details className="runtime-details">
+                        <summary>Pobrane modele Ollama ({health.ollama.models.length})</summary>
+                        <ul>
+                          {health.ollama.models.map((model) => <li key={model}>{model}</li>)}
+                        </ul>
+                      </details>
+                    ) : null}
+                    <div className="runtime-provider">
+                      <strong>Fallback Gemini</strong>
+                      <span>
+                        {!health
+                          ? 'Brak odczytu'
+                          : health.geminiConfigured
+                          ? 'Skonfigurowany · gemini-3.8-flash'
+                          : 'Nieskonfigurowany · brak GEMINI_API_KEY'}
+                      </span>
+                    </div>
                   </div>
+                  {health?.limitations.length ? (
+                    <details className="detail-card runtime-details">
+                      <summary>Ograniczenia runtime ({health.limitations.length})</summary>
+                      <ul>
+                        {health.limitations.map((limitation) => <li key={limitation}>{limitation}</li>)}
+                      </ul>
+                    </details>
+                  ) : null}
 
                   <div className="detail-card">
                     <div className="info-title">
@@ -1176,8 +1216,8 @@ export function App() {
                       </>
                     ) : (
                       <p>
-                        Brak zewnętrznej próbki z <code>linux-sync-agent.py</code>. Lokalny kontener
-                        Linux oraz demon <code>debian13/system/server.py</code> działają bezpośrednio.
+                        Brak aktualnej zewnętrznej próbki z <code>linux-sync-agent.py</code>.
+                        Stan lokalnego backendu znajduje się powyżej.
                       </p>
                     )}
                   </div>

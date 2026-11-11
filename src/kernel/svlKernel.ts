@@ -80,7 +80,6 @@ export const INITIAL_DATA_STORE: DataStore = {
       status: "READY_GENERATIVE_RENDER",
       style: "Logic-Chic (Deep Blue & Gold)"
     },
-    vm_ten_system: { auto_snapshot_api: "MANUAL_ONLY" },
     raw_socket_listener: {
       module_name: "Raw_Socket_RX_Monitor_v8.5.1",
       status: "ACTIVE_REAL_TIME_PHYSICAL_LISTENING",
@@ -285,13 +284,6 @@ export function normalizeDataStore(raw: any): DataStore {
     candidate.config && typeof candidate.config === 'object'
       ? { ...INITIAL_DATA_STORE.config, ...candidate.config }
       : { ...INITIAL_DATA_STORE.config };
-  for (const legacyModelKey of ['dialogue_engine', 'ai_provider', 'ai_model', 'live_ai_engine']) {
-    delete config[legacyModelKey];
-  }
-  if (typeof config.mode === 'string' && /ollama|gemini/i.test(config.mode)) {
-    config.mode = INITIAL_DATA_STORE.config.mode;
-  }
-
   const update_history: UpdateRecord[] =
     Array.isArray(candidate.update_history)
       ? candidate.update_history

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { DataStore, SYS_VERSION } from '../kernel/svlKernel';
+import { runAstyriaMission } from '../lib/astyriaMission';
 import { FormattedMessage } from './FormattedMessage';
 import {
   GitBranch,
@@ -18,17 +19,14 @@ import {
   Cpu,
   HardDrive,
   ShieldCheck,
-  Save,
 } from 'lucide-react';
 
 interface AstyriaMissionViewProps {
   dataStore: DataStore;
-  onUpdateDataStore: React.Dispatch<React.SetStateAction<DataStore>>;
 }
 
 export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
   dataStore,
-  onUpdateDataStore,
 }) => {
   const [selectedMissionAction, setSelectedMissionAction] = useState('deep_scan');
   const [isExecuting, setIsExecuting] = useState(false);
@@ -89,37 +87,10 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
     setLatestReply(null);
     setLatestError(null);
     try {
-      const res = await fetch('/api/astyria/mission', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: actionType,
-        }),
-      });
-
-      if (!res.ok) {
-        throw new Error(`Błąd HTTP ${res.status}`);
-      }
-
-      const data = await res.json();
+      const data = await runAstyriaMission(actionType);
       if (typeof data.reply === 'string' && data.reply.trim()) {
         setLatestReply(data.reply);
       }
-      if (data.state?.store) {
-        onUpdateDataStore(data.state.store);
-      } else if (data.reply) {
-        onUpdateDataStore((prev) => ({
-          ...prev,
-          chat_history: [
-            ...prev.chat_history,
-            {
-              agent: 'Astyria',
-              tekst: data.reply,
-            },
-          ],
-        }));
-      }
-
       if (data.reply) {
         setMissionLogs((prev) => [
           {
@@ -211,14 +182,6 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             <span>Wdróż Optymalizacje VM</span>
           </button>
 
-          <button
-            onClick={() => handleRunMissionAction('sync_versions')}
-            disabled={isExecuting}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 disabled:opacity-50 text-slate-950 font-bold text-xs cursor-pointer transition-all shadow-[0_0_15px_rgba(6,182,212,0.4)] active:scale-95"
-          >
-            <RefreshCw className={`w-4 h-4 ${isExecuting ? 'animate-spin' : ''}`} />
-            <span>Synchronizuj Wersję</span>
-          </button>
         </div>
       </div>
 
@@ -245,14 +208,6 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => handleRunMissionAction('vm_snapshot_now')}
-              disabled={isExecuting}
-              className="px-2.5 py-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-slate-950 font-bold text-[10px] flex items-center gap-1.5 cursor-pointer transition"
-            >
-              <Save className="w-3.5 h-3.5" />
-              <span>Snapshot JSON Teraz</span>
-            </button>
             <button
               onClick={() => handleRunMissionAction('vm_memory_optimize')}
               disabled={isExecuting}
@@ -329,24 +284,6 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             </p>
           </div>
 
-          {/* 4. Backup & Snapshot API */}
-          <div className="bg-slate-950/80 border border-emerald-500/30 hover:border-emerald-500/60 rounded-xl p-3.5 space-y-2 backdrop-blur-md transition-all shadow-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1.5 tracking-wider">
-                <Database className="w-3.5 h-3.5" />
-                4. Backup API (Co 5 min)
-              </span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-500/30 text-[9px] font-bold">
-                #{vmInfo?.snapshotsCount ?? 2} ZAPISANO
-              </span>
-            </div>
-            <div className="text-xs font-bold text-slate-100">
-              Snapshot JSON &amp; save-store
-            </div>
-            <p className="text-[10px] text-slate-400 leading-relaxed font-sans">
-              Zapisuje migawki do <code className="text-emerald-300">vm_ten_system_snapshot.json</code> oraz synchronizuje z <code className="text-cyan-300">/api/kernel/save-store</code>.
-            </p>
-          </div>
         </div>
       </div>
 
@@ -384,10 +321,6 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
               <div className="text-xs font-bold text-purple-300">
                 {liveStatus?.healedCount ?? 15} incydentów
               </div>
-            </div>
-            <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2">
-              <div className="text-[10px] text-slate-400">Zapis DATA_STORE</div>
-              <div className="text-xs font-bold text-amber-300">Atomowy + Snapshot 5m</div>
             </div>
           </div>
         </div>
@@ -432,7 +365,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
           <div>
             <div className="font-bold text-slate-100 text-xs group-hover:text-purple-300 transition-colors">Wdróż Ulepszenia VM</div>
             <p className="text-slate-400 text-[10px] mt-1 font-sans">
-              Aktywuje Daemon Reloader, RAM Guard &lt;70%, UFW i Snapshot 5m.
+              Konfiguracja VM wymaga potwierdzenia przez backend.
             </p>
           </div>
         </button>
@@ -454,27 +387,6 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             <div className="font-bold text-slate-100 text-xs group-hover:text-emerald-300 transition-colors">Synchronizuj protokół</div>
             <p className="text-slate-400 text-[10px] mt-1 font-sans">
               Czyści bufory i synchronizuje stan jądra bez interpretowania swobodnego tekstu.
-            </p>
-          </div>
-        </button>
-
-        <button
-          onClick={() => handleRunMissionAction('repair_schemas')}
-          disabled={isExecuting}
-          className="bg-slate-900/70 hover:bg-slate-900 border border-cyan-500/40 hover:border-cyan-400 rounded-2xl p-4 text-left transition-all duration-200 group cursor-pointer flex flex-col justify-between space-y-2.5 backdrop-blur-md shadow-sm hover:shadow-[0_0_20px_rgba(6,182,212,0.2)]"
-        >
-          <div className="flex items-center justify-between">
-            <div className="w-8 h-8 rounded-xl bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
-              <Database className="w-4 h-4" />
-            </div>
-            <span className="text-[9px] text-cyan-300 font-mono bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-700/60 font-bold">
-              DATA_STORE
-            </span>
-          </div>
-          <div>
-            <div className="font-bold text-slate-100 text-xs group-hover:text-cyan-300 transition-colors">Synchronizuj DATA_STORE</div>
-            <p className="text-slate-400 text-[10px] mt-1 font-sans">
-              Waliduje schematy JSON i utrwala snapshot na dysku.
             </p>
           </div>
         </button>
@@ -515,7 +427,7 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
           <div>
             <div className="font-bold text-slate-100 text-xs group-hover:text-emerald-300 transition-colors">Eksplorator Plików VM</div>
             <p className="text-slate-400 text-[10px] mt-1 font-sans">
-              Pobierz <code className="text-emerald-300">vm_ten_sys.sh</code> i snapshoty JSON.
+              Przeglądaj pliki VM.
             </p>
           </div>
         </button>
@@ -539,12 +451,9 @@ export const AstyriaMissionView: React.FC<AstyriaMissionViewProps> = ({
             className="min-w-0 flex-1 bg-slate-950/90 border border-slate-700/70 focus:border-cyan-400 rounded-xl px-4 py-2.5 text-xs text-slate-100 focus:outline-none font-mono transition-all shadow-inner"
             disabled={isExecuting}
           >
-            <option value="deep_scan">Odczytowy skan logów i telemetrii</option>
+            <option value="deep_scan">Skan logów — niedostępny</option>
             <option value="vm_firewall_audit">Raport stanu zapory VM</option>
-            <option value="vm_snapshot_now">Utwórz snapshot VM_Ten_System</option>
             <option value="vm_memory_optimize">Uruchom optymalizację pamięci VM</option>
-            <option value="repair_schemas">Sprawdź schematy i zapisz snapshot</option>
-            <option value="sync_versions">Synchronizuj wersję i dane systemu</option>
             <option value="internet_self_update">Aktualizacja z internetu i GitHub</option>
             <option value="ollama_optimize">Optymalizacja i konfiguracja Ollamy (cała Triada)</option>
           </select>

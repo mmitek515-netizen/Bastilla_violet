@@ -10,6 +10,61 @@ export function stripAnsiCodes(input: string): string {
   return input.replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '');
 }
 
+export function parseCodexCliCommand(rawCommand: string): string[] {
+  const args: string[] = [];
+  let current = '';
+  let quote: "'" | '"' | null = null;
+  let escaped = false;
+  let tokenStarted = false;
+
+  for (const char of rawCommand) {
+    if (escaped) {
+      current += char;
+      escaped = false;
+      tokenStarted = true;
+      continue;
+    }
+
+    if (char === '\\' && quote !== "'") {
+      escaped = true;
+      tokenStarted = true;
+      continue;
+    }
+
+    if (quote) {
+      if (char === quote) quote = null;
+      else current += char;
+      tokenStarted = true;
+      continue;
+    }
+
+    if (char === "'" || char === '"') {
+      quote = char;
+      tokenStarted = true;
+    } else if (/\s/.test(char)) {
+      if (tokenStarted) {
+        args.push(current);
+        current = '';
+        tokenStarted = false;
+      }
+    } else {
+      current += char;
+      tokenStarted = true;
+    }
+  }
+
+  if (escaped) throw new Error('Polecenie Codex kończy się niekompletnym escape.');
+  if (quote) throw new Error('Polecenie Codex zawiera niedomknięty cudzysłów.');
+  if (tokenStarted) args.push(current);
+
+  if (args[0]?.toLowerCase() === 'codex') args.shift();
+  return args;
+}
+
+export function isCodexDeviceAuthCommand(args: readonly string[]): boolean {
+  return args[0]?.toLowerCase() === 'login' && args.includes('--device-auth');
+}
+
 export function parseCodexDeviceAuthOutput(rawOutput: string): {
   verificationUrl: string | null;
   userCode: string | null;

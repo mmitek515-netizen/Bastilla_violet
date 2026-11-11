@@ -2,7 +2,7 @@
 
 ## Dostarczony moduł
 
-Zakładka **Flota i statki kosmiczne** jest widoczna w nawigacji i na ekranie głównym.
+Zakładka **Flota** jest dostępna w nawigacji oraz na pulpicie.
 Wewnątrz działa interaktywny panel inspirowany sterowaniem ChatGPT:
 mapa XY, powiększanie i przesuwanie, wybór obiektów, widok listy, wyszukiwarka,
 filtry, panel pochodzenia danych, historia czasu ostatniej obserwacji oraz
@@ -36,7 +36,8 @@ statki. Panel wymaga wpisania tokenu operatora w bieżącej karcie przeglądarki
 nie zapisuje go do localStorage. Uwierzytelnianie nie zastępuje niezależnej
 kontroli autentyczności danych z urządzenia.
 
-Dane są zapisywane atomowo w `data/fleet-registry.json` i ignorowane przez Git.
+Dane są zapisywane atomowo w `DATA_DIR/fleet-registry.json` (domyślnie
+`data/fleet-registry.json`) i ignorowane przez Git.
 Ustaw `FLEET_STORE_PATH` na trwały, prywatny dysk/wolumen. Bez trwałego dysku
 (np. efemeryczne kontenery Cloud Run) rejestr może zostać utracony przy restarcie;
 wtedy konieczna jest zewnętrzna baza danych lub trwałe repozytorium danych.

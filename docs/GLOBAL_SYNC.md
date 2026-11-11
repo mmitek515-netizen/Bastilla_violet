@@ -1,46 +1,34 @@
 # Globalna synchronizacja Bastilla OS / SVL_System
 
-## Warstwa 0 — szyna zdarzeń (nowa, po komendach w czacie)
+## Aktywna aplikacja — czat i status
 
-Backend udostępnia `GET /api/sync/events` (Server-Sent Events) i
-`GET /api/sync/status`. Po zakończeniu modyfikującego żądania HTTP
-w obszarach czatu, kernela, aplikacji, floty, baz, misji i AI publikuje
-powiadomienie o unieważnieniu wcześniejszego odczytu. Przeglądarki
-subskrybują SSE, a aktualnie otwarte panele odczytują dane ponownie
-z autorytatywnych API. Zdarzenie nigdy nie jest samo w sobie dowodem
-zapisania konkretnej zmiany. Jest tylko sygnałem „sprawdź ponownie”.
+Serwer publikuje `GET /api/events` (SSE). Po zapisaniu rozmów, wiadomości,
+awatarów i pozostałych wspieranych zmian wysyła sygnał aktualizacji bez treści
+wiadomości i sekretów. Otwarte karty pobierają aktualny stan z szybkiego
+`GET /api/state`; diagnostykę z `GET /api/health` pobiera się oddzielnie,
+więc wolna Ollama nie opóźnia synchronizacji czatu. Po ponownym połączeniu
+karty odczytują stan także po zdarzeniu `ready`. Jest również okresowy odczyt
+zapasowy i odświeżenie po powrocie do karty.
 
-Uzupełnienie starego polling 4 s: `EventSource` ma automatyczny retry;
-przy braku połączenia nadal działa okresowy odczyt. Ręczny przycisk
-Synchronizuj wywołuje odświeżenie także paneli narzędzi.
-Szyna jest **lokalna dla pojedynczego procesu Node**, nie ma trwałej kolejki,
-odporności na restart ani synchronizacji pomiędzy niezależnymi backendami.
-Nie publikuje sekretów lub treści czatu.
+Zapis wiadomości i odpowiedź HTTP nie czekają na generowanie przez model;
+status odpowiedzi zmienia się po jej rzeczywistym zakończeniu. Zdarzenia
+działają wyłącznie między klientami tego samego procesu backendu i nie są
+trwałą kolejką. Połączenie lub odczyt mogą się nie powieść.
 
-**Ważne ograniczenia:** zmiany hosta Linux wykonane zewnętrznie (apt,
-systemd, root shell, Docker, inny proces) nie powodują automatycznie
-zdarzenia, jeżeli nie przechodzą przez backend Bastilla. Ollama i workery
-SPAA muszą mieć rzeczywiste podłączone API/adaptery i odczyt po statusie.
-Synchronizacja GitHub main nie instaluje kodu na hostcie i nie aktualizuje
-sama Preview Google AI Studio. Stan systemu jest potwierdzony wyłącznie
-z odczytu backendu, nie z wygenerowanego komunikatu AI.
+Swobodna odpowiedź AI nie jest dowodem zmiany konfiguracji ani wykonania
+poleceń. Tylko rzeczywiście podłączone operacje backendu mogą zmieniać stan.
+Flota i HyperCom korzystają z odrębnych rejestrów i odświeżania; zmiany poza
+backendem, inne instancje serwera, host Linux oraz wdrożenia GitHub/AI Studio
+nie są automatycznie synchronizowane przez tę szynę.
 
-## Warstwa 1 — DATA_STORE (interfejs ↔ backend)
+Stary panel misji nie zastępuje DATA_STORE stanem z odpowiedzi misji.
+Skan logów pozostaje niedostępny bez zweryfikowanego endpointu tylko do
+odczytu. Odczyt jądra nie migruje ani nie zapisuje konfiguracji modeli.
 
-Źródłem prawdy jest Python SVL Kernel udostępniany przez `GET /api/kernel/state`.
-Przeglądarka nie może traktować samego localStorage jako potwierdzonego stanu systemu.
+## Historyczna integracja GitHub
 
-- Automatyczny odczyt co ~4 s i przy aktywacji karty/okna.
-- Zmiany między kartami tej samej przeglądarki przyspieszają odczyt z backendu przez `storage` event.
-- Odrzucamy niepełne odpowiedzi serwera i wyniki starych żądań rozpoczętych przed zapisem lub czatem.
-- Przycisk **Synchronizuj** wykonuje tylko `GET /api/kernel/state?fresh=1`.
-  Nie uruchamia już misji `sync_versions` (ta tworzy migawki i zmienia konfigurację).
-- HTTP error lub brak kompletnego stanu pokazuje błąd, nie fałszywy zielony sukces.
-- Backend nie może zastępować błędu `fresh=1` starą pamięcią podręczną.
-- Etykieta DATA_STORE ONLINE/OFFLINE dotyczy osiągalności API, nie możliwości działania roota,
-  Ollamy ani synchronizacji GitHub.
-
-## Warstwa 2 — GitHub (kod ↔ origin/main)
+Poniższy opis dotyczy starszej, niepodłączonej wersji interfejsu; nie opisuje
+gwarancji aktualnego panelu.
 
 Panel **Synchronizacja aplikacji** korzysta z `GET /api/triad/git/status`
 i `POST /api/triad/github/sync`. Status odświeża się co 15 s i po powrocie do okna.

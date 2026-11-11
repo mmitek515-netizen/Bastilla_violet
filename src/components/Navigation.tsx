@@ -2,18 +2,18 @@ import React, { useState } from 'react';
 import {
   Activity, Brain, ChevronDown, ChevronRight, Cpu, Database, FileCode2,
   FolderOpen, GitBranch, Github, HardDrive, Home, LayoutGrid, Menu,
-  MessageSquare, Radio, Satellite, ShieldCheck, Sigma, Terminal, Clock, Layers
+  MessageSquare, Radio, Satellite, ShieldCheck, Sigma, Terminal, Layers
 } from 'lucide-react';
 
 export type TabId =
   | 'home' | 'comms' | 'ai_tools' | 'approvals' | 'process_matrix'
-  | 'astyria_mission' | 'schema_graph' | 'temporal' | 'terminal'
+  | 'astyria_mission' | 'schema_graph' | 'terminal'
   | 'monolith' | 'datastore' | 'diagnostics' | 'visualizer'
   | 'file_explorer' | 'apps' | 'hyper_com' | 'fleet' | 'without_nlp' | 'github';
 
 export const TAB_IDS: readonly TabId[] = [
   'home', 'comms', 'ai_tools', 'approvals', 'process_matrix', 'astyria_mission',
-  'schema_graph', 'temporal', 'terminal', 'monolith', 'datastore',
+  'schema_graph', 'terminal', 'monolith', 'datastore',
   'diagnostics', 'visualizer', 'file_explorer', 'apps', 'hyper_com',
   'fleet', 'without_nlp', 'github',
 ];
@@ -53,7 +53,6 @@ const SECTIONS: { id: string; label: string; icon: React.ComponentType<{ classNa
     { id: 'process_matrix', label: 'Procesy i naprawy', icon: Cpu },
     { id: 'astyria_mission', label: 'Misje Astyrii', icon: GitBranch },
     { id: 'schema_graph', label: 'Mapa pamięci', icon: Brain },
-    { id: 'temporal', label: 'Migawki i oś czasu', icon: Clock },
     { id: 'visualizer', label: 'Wizualizator agentów', icon: Sigma },
     { id: 'approvals', label: 'Decyzje i akceptacje', icon: ShieldCheck },
   ] },

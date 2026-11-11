@@ -25,7 +25,7 @@ export type Message = {
   author: string;
   content: string;
   createdAt: string;
-  status: 'saved' | 'queued' | 'delivered' | 'failed';
+  status: 'saved' | 'queued' | 'running' | 'delivered' | 'failed';
   provider?: string;
   error?: string;
   attachments?: ChatAttachmentPayload[];
@@ -150,14 +150,15 @@ export type ServerHealth = {
   limitations: string[];
 };
 
-export type Bootstrap = {
+export type AppState = {
   sessions: Session[];
   messages: Message[];
   avatars: Record<string, string>;
-  health: ServerHealth;
-  revision?: number;
-  updatedAt?: string;
+  revision: number;
+  updatedAt: string;
 };
+
+export type Bootstrap = AppState & { health: ServerHealth };
 
 export type WidgetBlock = {
   type: string;

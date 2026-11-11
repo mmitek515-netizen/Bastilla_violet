@@ -6,12 +6,8 @@ export const AGENT_PROTOCOL_COMMANDS = [
 ] as const;
 
 export const ASTYRIA_MISSION_ACTIONS = [
-  'deep_scan',
   'vm_firewall_audit',
-  'vm_snapshot_now',
   'vm_memory_optimize',
-  'repair_schemas',
-  'sync_versions',
   'deploy_vm_ten_system',
   'internet_self_update',
   'ollama_optimize',
@@ -20,12 +16,8 @@ export const ASTYRIA_MISSION_ACTIONS = [
 export type AstyriaMissionAction = (typeof ASTYRIA_MISSION_ACTIONS)[number];
 
 export const ASTYRIA_MISSION_LABELS: Record<AstyriaMissionAction, string> = {
-  deep_scan: 'Skan logów i telemetrii',
   vm_firewall_audit: 'Audyt zapory i usług VM',
-  vm_snapshot_now: 'Zapisz migawkę VM',
   vm_memory_optimize: 'Optymalizuj pamięć VM',
-  repair_schemas: 'Sprawdź dane i zapisz migawkę',
-  sync_versions: 'Synchronizuj system i aplikacje',
   deploy_vm_ten_system: 'Wdróż konfigurację VM_Ten_System',
   internet_self_update: 'Aktualizacja z internetu i GitHub',
   ollama_optimize: 'Optymalizacja i konfiguracja Ollamy',

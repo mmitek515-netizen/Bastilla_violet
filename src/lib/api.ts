@@ -1,5 +1,6 @@
 import type {
   AgentName,
+  AppState,
   Bootstrap,
   ChatAttachmentPayload,
   CodexCliState,
@@ -53,6 +54,7 @@ export const api = {
       '/api/linux/status',
     ),
   bootstrap: () => request<Bootstrap>('/api/bootstrap'),
+  state: () => request<AppState>('/api/state'),
   health: () => request<ServerHealth>('/api/health'),
   codexStatus: () => request<CodexCliState>('/api/codex/status'),
   startCodexLogin: () =>

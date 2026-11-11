@@ -6,7 +6,11 @@ import {
   isAriaConnectCommand,
   runPythonSvlCoreReport,
 } from '../src/lib/svlAriaBridge';
-import { parseCodexDeviceAuthOutput } from '../src/lib/codexCliBridge';
+import {
+  isCodexDeviceAuthCommand,
+  parseCodexCliCommand,
+  parseCodexDeviceAuthOutput,
+} from '../src/lib/codexCliBridge';
 
 test('TopologicalInfinityEngine Algebra 97 compactifies [-inf, inf] to [-1, 1] and computes c = 2.5', () => {
   assert.equal(compactifyAlgebra97(Number.NEGATIVE_INFINITY), -1.0);
@@ -49,4 +53,22 @@ Welcome to Codex [v0.167.1]
   const parsed = parseCodexDeviceAuthOutput(sample);
   assert.equal(parsed.verificationUrl, 'https://auth.openai.com/codex/device');
   assert.equal(parsed.userCode, 'CVZA-62N1L');
+});
+
+test('parseCodexCliCommand preserves quoted arguments and only strips the CLI prefix', () => {
+  const statusArgs = parseCodexCliCommand('codex login status');
+  assert.deepEqual(statusArgs, ['login', 'status']);
+  assert.equal(isCodexDeviceAuthCommand(statusArgs), false);
+  assert.equal(isCodexDeviceAuthCommand(['login', '--device-auth']), true);
+  assert.equal(isCodexDeviceAuthCommand(['exec', '--device-auth']), false);
+  assert.deepEqual(parseCodexCliCommand('codex exec "review this change"'), [
+    'exec',
+    'review this change',
+  ]);
+  assert.deepEqual(parseCodexCliCommand(`codex exec 'a path/with spaces'`), [
+    'exec',
+    'a path/with spaces',
+  ]);
+  assert.deepEqual(parseCodexCliCommand('codex'), []);
+  assert.throws(() => parseCodexCliCommand('codex exec "unfinished'), /niedomknięty cudzysłów/);
 });

@@ -1,0 +1,152 @@
+.sidebar {
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.conversation-list {
+  min-height: 0;
+}
+
+.sidebar-bottom,
+.sidebar-footer {
+  flex-shrink: 0;
+}
+
+.message-status {
+  border: 1px solid #49425f;
+  border-radius: 999px;
+  color: #bdb4d4;
+  font-size: 10px;
+  line-height: 1;
+  padding: 4px 7px;
+}
+
+.message-status.status-queued {
+  border-color: #8a6c38;
+  color: #f0ca7a;
+}
+
+.message-status.status-running {
+  border-color: #4a70ad;
+  color: #a9cbff;
+}
+
+.message-status.status-delivered {
+  border-color: #39775c;
+  color: #9ee0bb;
+}
+
+.message-status.status-failed {
+  border-color: #8b454f;
+  color: #ffadb6;
+}
+
+.runtime-details {
+  color: #c9c4d9;
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.runtime-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.runtime-details ul {
+  margin: 8px 0 0;
+  padding-left: 20px;
+  overflow-wrap: anywhere;
+}
+
+.runtime-provider {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 5px 12px;
+  margin-top: 12px;
+  color: #aaa8c0;
+  font-size: 11px;
+}
+
+.runtime-provider strong {
+  color: #e4ddff;
+}
+
+.sidebar-bottom button[aria-current="page"] {
+  color: #fff;
+  background: #302743;
+}
+
+.selected-module-drawer {
+  width: min(1050px, 100vw);
+}
+
+.selected-module-drawer .detail-content {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.selected-module {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  color: #c9c4d9;
+  line-height: 1.6;
+}
+
+.module-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.module-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 7px;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid #3c3651;
+  border-radius: 14px;
+  background: #1b1c2b;
+  color: #e9e3fa;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.module-tile small,
+.module-tile span {
+  color: #b7aecb;
+  font-size: 12px;
+}
+
+.module-link:hover,
+.module-link:focus-visible {
+  border-color: #b79aff;
+  background: #29233d;
+}
+
+.module-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.hypercom-frame {
+  display: block;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 460px;
+  border: 1px solid #343048;
+  border-radius: 12px;
+  background: #07111f;
+}
+
+@media (max-width: 740px) {
+  .selected-module-drawer .detail-content {
+    padding: 12px;
+  }
+}

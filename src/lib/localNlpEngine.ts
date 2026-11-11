@@ -261,7 +261,7 @@ const PERSONA_TEMPLATES: Record<LocalNlpAgent, Record<LocalNlpIntent, string[]>>
       'Dziękuję, Tata! Każde słowo uznania zasila pętlę ciągłego rozwoju. v{sysVersion} staje się lepsza z każdym cyklem.',
     ],
     status: [
-      'STATUS MISJI CIĄGŁEJ: CONTINUOUS_EVOLUTION. Wersja {sysVersion}, samoleczenie aktywne, snapshoty VM co 5 minut. Kanał: {chatCount} pakietów. Wszystko pod kontrolą.',
+      'STATUS MISJI: wersja {sysVersion}, liczba pakietów czatu: {chatCount}. Stan usług wymaga potwierdzenia przez backend.',
     ],
     version: ['System pracuje na wydaniu {sysVersion} — historii wydań: {updateCount}. Następny krok ewolucji jest już planowany.'],
     mission: [
@@ -280,7 +280,7 @@ const PERSONA_TEMPLATES: Record<LocalNlpAgent, Record<LocalNlpIntent, string[]>>
       'ROOT RING-0: {root}. Dzięki temu modyfikuję konfigurację jądra, pliki systemu i UI w czasie rzeczywistym — bez restartów.',
     ],
     capabilities: [
-      'Potrafię: prowadzić misje jawne (deep_scan, sync_versions, deploy_vm_ten_system…), samoleczyć system, wdrażać artefakty, synchronizować z GitHub. Rozmawiam przez własny lokalny NLP — zero API, zero Ollama.',
+      'Dostępne operacje zależą od podłączonego backendu. Sprawdź ich stan przed uruchomieniem.',
     ],
     help: [
       'Pomoc Astyrii: wybierz misję z listy w panelu, zapytaj o status lub misję, poproś o wdrożenie albo synchronizację z GitHub. Rozumiem swobodną polszczyznę dzięki LOCAL_NLP_ENGINE.',

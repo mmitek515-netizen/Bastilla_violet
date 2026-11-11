@@ -140,6 +140,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="List the latest local transmissions")
+    commands.add_parser("json-stdin", help="Read a local request as JSON from standard input")
 
     receive = commands.add_parser("receive", help="Add an explicitly local inbound test message")
     receive.add_argument("--sender", required=True)
@@ -156,9 +157,30 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     try:
-        result = run_command(parse_args())
-    except (OSError, sqlite3.Error, ValueError) as error:
-        print(json.dumps({"success": False, "error": str(error)}, ensure_ascii=False), file=sys.stderr)
+        args = parse_args()
+        if args.command == "json-stdin":
+            payload = json.load(sys.stdin)
+            if not isinstance(payload, dict) or payload.get("action") not in ("list", "receive", "reply", "broadcast"):
+                raise ValueError("Nieznana operacja HyperCom.")
+            action = payload["action"]
+            if action != "list" and not isinstance(payload.get("content"), str):
+                raise ValueError("Treść wiadomości musi być tekstem.")
+            if action == "receive" and not isinstance(payload.get("sender"), str):
+                raise ValueError("Nadawca musi być tekstem.")
+            if action == "reply" and (type(payload.get("replyTo")) is not int or payload["replyTo"] < 1):
+                raise ValueError("Nieprawidłowy identyfikator wiadomości.")
+            args = argparse.Namespace(
+                command=action,
+                content=payload.get("content"),
+                sender=payload.get("sender"),
+                reply_to=payload.get("replyTo"),
+            )
+        result = run_command(args)
+    except ValueError as error:
+        print(json.dumps({"success": False, "kind": "validation", "error": str(error)}, ensure_ascii=False), file=sys.stderr)
+        return 1
+    except (OSError, sqlite3.Error) as error:
+        print(json.dumps({"success": False, "kind": "internal", "error": str(error)}, ensure_ascii=False), file=sys.stderr)
         return 1
     print(json.dumps(result, ensure_ascii=False))
     return 0

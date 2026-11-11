@@ -9,9 +9,16 @@ import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { WebSocketServer, WebSocket } from 'ws';
-import { CodexCliManager, stripAnsiCodes } from './src/lib/codexCliBridge';
+import {
+  CodexCliManager,
+  isCodexDeviceAuthCommand,
+  parseCodexCliCommand,
+  stripAnsiCodes,
+} from './src/lib/codexCliBridge';
 import { resolveVisionModel } from './src/kernel/visionModel';
 import { requireGitHubWriteToken } from './src/lib/githubWriteAuth';
+import { createFleetRouter } from './src/lib/fleetRoutes';
+import { createHyperComRouter } from './src/lib/hyperComRoutes';
 import {
   calculateTopologicalMetricC,
   isAriaConnectCommand,
@@ -257,6 +264,9 @@ app.use((_req, res, next) => {
 app.post('/api/github/export', (_req, res) => res.status(410).json({ success: false, error: 'Ta trasa została wycofana.' }));
 app.post('/api/github/pull', (_req, res) => res.status(410).json({ success: false, error: 'Ta trasa została wycofana.' }));
 app.use(requireGitHubWriteToken);
+app.use('/api/fleet', createFleetRouter({
+  file: process.env.FLEET_STORE_PATH || path.join(DATA_DIR, 'fleet-registry.json'),
+}));
 
 const sseClients = new Set<express.Response>();
 function publish(reason: string) {
@@ -698,6 +708,7 @@ app.use('/api', (req, res, next) => {
   }
   next();
 });
+app.use('/api/hyper-com', createHyperComRouter(DATA_DIR));
 
 // --- CORE HEALTH, BOOTSTRAP & SSE ---
 app.get('/healthz', (_req, res) => {
@@ -706,6 +717,17 @@ app.get('/healthz', (_req, res) => {
 
 app.get('/api/health', async (req, res) => {
   res.json(await buildServerHealth(req));
+});
+
+app.get('/api/state', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({
+    sessions: db.sessions,
+    messages: db.messages,
+    avatars: db.avatars,
+    revision: db.revision,
+    updatedAt: db.updatedAt,
+  });
 });
 
 app.get('/api/bootstrap', async (req, res) => {
@@ -780,9 +802,9 @@ async function executeAriaConnect(sessionId?: string): Promise<{
 
 
   let createdMsg: Message | undefined;
-  const targetSession =
-    (sessionId && db.sessions.find((s) => s.id === sessionId && !s.archived)) ||
-    db.sessions.find((s) => !s.archived);
+  const targetSession = sessionId
+    ? db.sessions.find((s) => s.id === sessionId)
+    : db.sessions.find((s) => !s.archived);
 
   if (targetSession) {
     const uiBlock = {
@@ -898,7 +920,8 @@ app.post('/api/terminal/exec', async (req, res) => {
 
     if (terminal === 'codex') {
       const codexBin = codexManager.getCodexBinary() || 'codex';
-      if (/^login(\s|$)/i.test(rawCommand) || rawCommand.includes('--device-auth')) {
+      const args = parseCodexCliCommand(rawCommand);
+      if (isCodexDeviceAuthCommand(args)) {
         const device = await codexManager.startChatGptDeviceLogin();
         const out = [
           device.rawOutput || 'Uruchomiono autoryzację urządzenia OpenAI Codex CLI.',
@@ -920,10 +943,6 @@ app.post('/api/terminal/exec', async (req, res) => {
         });
       }
 
-      const args = rawCommand
-        .replace(/^codex\s+/i, '')
-        .split(/\s+/)
-        .filter(Boolean);
       const { stdout, stderr } = await execFileAsync(codexBin, args.length ? args : ['--version'], {
         cwd: lastBashCwd,
         timeout: 20000,
@@ -1472,51 +1491,67 @@ app.post('/api/messages', async (req, res) => {
     session.title = content.slice(0, 48);
   }
 
-  // Handle "podłącz moje ai aria" immediately with the real Python SVLSystemKernel!
   if (isAriaConnectCommand(content)) {
-    try {
-      const ariaRes = await executeAriaConnect(sessionId);
-      return res.json({
-        user: userMsg,
-        response: ariaRes.message || null,
-        provider: ariaRes.message?.provider || 'SVLSystemKernel · 5.6.0-QuantumWheel',
+    persist();
+    publish('messages');
+    res.status(202).json({ user: userMsg, response: null, provider: null });
+    void executeAriaConnect(sessionId).catch((error: unknown) => {
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error('Nie udało się podłączyć Aria:', error);
+      db.messages.push({
+        id: randomUUID(), sessionId, role: 'system', author: 'Bastilla OS',
+        content: `Nie udało się podłączyć Aria: ${reason}`,
+        createdAt: new Date().toISOString(), status: 'failed', error: reason,
       });
-    } catch (e) {
-      return sendError(
-        res,
-        e instanceof Error ? e.message : 'Nie udało się wykonać svl_core.py',
-        500,
-      );
-    }
+      persist();
+      publish('messages');
+    });
+    return;
   }
 
-  // If addressed specifically to Aria AND Aria is connected via SVLSystemKernel, Aria responds directly!
   if (target === 'Aria' && db.svlCoreState?.ariaConnected) {
-    const { report, rawJson, pid } = await runPythonSvlCoreReport(process.cwd());
-    const replyContent = await answerNaturalLanguageCommand(
-      content,
-      db.messages.filter((m) => m.sessionId === sessionId),
-      attachments,
-    );
     const ariaMsg: Message = {
       id: randomUUID(),
       sessionId,
       role: 'agent',
       author: 'Aria',
-      content: `${replyContent.content}\n\n---\n*SVL Core Telemetry (${report.System}, Compact_Metric_C=${report.Compact_Metric_C}, PID=${pid})*\n\`\`\`json\n${rawJson}\n\`\`\``,
+      content: 'Przygotowuję odpowiedź…',
       createdAt: new Date().toISOString(),
-      status: 'delivered',
-      provider: `Aria · SVLSystemKernel ${report.System}`,
+      status: 'queued',
     };
     db.messages.push(ariaMsg);
-    session.updatedAt = ariaMsg.createdAt;
     persist();
     publish('messages');
-    return res.json({ user: userMsg, response: ariaMsg, provider: ariaMsg.provider });
+    res.status(202).json({ user: userMsg, response: ariaMsg, provider: null });
+    void (async () => {
+      try {
+        const { report, rawJson, pid } = await runPythonSvlCoreReport(process.cwd());
+        const replyContent = await answerNaturalLanguageCommand(
+          content,
+          db.messages.filter((m) => m.sessionId === sessionId && m.id !== ariaMsg.id),
+          attachments,
+        );
+        ariaMsg.content = `${replyContent.content}\n\n---\n*SVL Core Telemetry (${report.System}, Compact_Metric_C=${report.Compact_Metric_C}, PID=${pid})*\n\`\`\`json\n${rawJson}\n\`\`\``;
+        ariaMsg.provider = `Aria · SVLSystemKernel ${report.System}`;
+        ariaMsg.status = 'delivered';
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.error('Nie udało się wygenerować odpowiedzi Aria:', error);
+        ariaMsg.content = `Nie udało się wygenerować odpowiedzi: ${reason}`;
+        ariaMsg.error = reason;
+        ariaMsg.status = 'failed';
+      }
+      ariaMsg.createdAt = new Date().toISOString();
+      session.updatedAt = ariaMsg.createdAt;
+      persist();
+      publish('messages');
+    })();
+    return;
   }
 
   // If addressed to a specific unverified agent, queue the job honestly without simulating!
   if (target !== 'Wszyscy') {
+    userMsg.status = 'queued';
     db.jobs.push({
       id: randomUUID(),
       sessionId,
@@ -1538,26 +1573,45 @@ app.post('/api/messages', async (req, res) => {
   }
 
   const sessionHistory = db.messages.filter((m) => m.sessionId === sessionId);
-  const answer = await answerNaturalLanguageCommand(content, sessionHistory, attachments);
   const responseMessage: Message = {
     id: randomUUID(),
     sessionId,
     role: 'assistant',
     author: 'Bastilla OS',
-    content: answer.content,
-    provider: answer.provider,
+    content: 'Przygotowuję odpowiedź…',
+    provider: 'Ollama → Gemini fallback',
     createdAt: new Date().toISOString(),
-    status: 'delivered',
+    status: 'queued',
   };
   db.messages.push(responseMessage);
   session.updatedAt = responseMessage.createdAt;
   persist();
   publish('messages');
 
-  res.json({
+  void (async () => {
+    try {
+      const answer = await answerNaturalLanguageCommand(content, sessionHistory, attachments);
+      responseMessage.content = answer.content;
+      responseMessage.provider = answer.provider;
+      responseMessage.status = 'delivered';
+      responseMessage.createdAt = new Date().toISOString();
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      console.error(`Nie udało się wygenerować odpowiedzi dla wiadomości ${userMsg.id}:`, e);
+      responseMessage.content = `Nie udało się wygenerować odpowiedzi: ${reason}`;
+      responseMessage.error = reason;
+      responseMessage.status = 'failed';
+      responseMessage.createdAt = new Date().toISOString();
+    }
+    session.updatedAt = responseMessage.createdAt;
+    persist();
+    publish('messages');
+  })();
+
+  res.status(202).json({
     user: userMsg,
     response: responseMessage,
-    provider: answer.provider,
+    provider: responseMessage.provider,
   });
 });
 
@@ -1604,6 +1658,8 @@ app.post('/api/worker/next', workerAuth, (req, res) => {
   job.leaseUntil = Date.now() + 60000;
   job.attempts += 1;
   job.workerId = workerId;
+  const requestMessage = db.messages.find((message) => message.id === job.messageId);
+  if (requestMessage) requestMessage.status = 'running';
   persist();
   publish('workers');
   res.json({ job });
@@ -1626,6 +1682,8 @@ app.post('/api/worker/complete', workerAuth, (req, res) => {
     return sendError(res, 'Nieprawidłowa odpowiedź workera.');
   }
   job.status = 'done';
+  const requestMessage = db.messages.find((message) => message.id === job.messageId);
+  if (requestMessage) requestMessage.status = 'delivered';
   const m: Message = {
     id: randomUUID(),
     sessionId: job.sessionId,

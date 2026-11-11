@@ -8,7 +8,7 @@ Architektura:
 [2. Rdzen Bezposredni without_nlp]
        |
        v
-[3. Physical Monitor Port 3200/TCP] + [Data Store & Snapshot API]
+[3. Physical Monitor Port 3200/TCP] + [Data Store]
        |
        v
 [4. Ostateczna Odpowiedz dla Taty]
