@@ -33,7 +33,9 @@ test('runPythonSvlCoreReport executes svl_core.py and returns SVLSystemKernel 5.
   assert.equal(report.Config_Snapshot.fourier_buffer, '0xFAAA');
   assert.equal(report.Config_Snapshot.acoustic_resonance_hz, 880);
   assert.equal(report.Actual_SI_Updates_Count, 3);
-  assert.equal(report.ariaConnected, true);
+  assert.equal(report.ariaConnected, false);
+  assert.equal(report.ariaPid, null);
+  assert.equal(report.ariaConnectedAt, null);
   assert.ok(typeof pid === 'number');
   assert.ok(rawJson.includes('5.6.0-QuantumWheel'));
 });

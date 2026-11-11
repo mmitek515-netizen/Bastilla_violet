@@ -176,7 +176,7 @@ function defaultDb(): Database {
         role: 'system',
         author: 'SVL Kernel · Debian 13',
         content:
-          'System Bastilla OS / SVL_System załadowany. Wpisz `podłącz moje ai aria`, aby uruchomić SVL Core v5.6.0-QuantumWheel (TopologicalInfinityEngine) i podłączyć agenta Aria, lub otwórz Terminale PTY (Bash, Python, OpenAI Codex CLI, AI NLP, Admin Sudo).',
+          'System Bastilla OS / SVL_System załadowany. Wpisz `podłącz moje ai aria`, aby wygenerować jednorazowy raport SVL Core v5.6.0-QuantumWheel (nie uruchamia on niezależnego workera), lub otwórz Terminale PTY (Bash, Python, OpenAI Codex CLI, AI NLP, Admin Sudo).',
         createdAt: now,
         status: 'delivered',
         provider: 'SVLSystemKernel · v5.6.0-QuantumWheel',
@@ -225,13 +225,11 @@ if (!db.sessions.some((s) => !s.archived)) {
 }
 
 const heartbeats = new Map<AgentName, { workerId: string; lastSeen: string; pid?: number }>();
-// Restore Aria connection state if previously connected via command in persisted DB
-if (db.svlCoreState?.ariaConnected && db.svlCoreState.ariaConnectedAt) {
-  heartbeats.set('Aria', {
-    workerId: `svl-core-aria-pid-${db.svlCoreState.ariaPid || process.pid}`,
-    lastSeen: db.svlCoreState.ariaConnectedAt,
-    pid: db.svlCoreState.ariaPid || process.pid,
-  });
+// A persisted report is not evidence that an Aria worker is still running.
+if (db.svlCoreState) {
+  db.svlCoreState.ariaConnected = false;
+  db.svlCoreState.ariaPid = null;
+  db.svlCoreState.ariaConnectedAt = null;
 }
 
 function persist() {
@@ -592,22 +590,17 @@ function getAgentStates(): AgentState[] {
   const now = Date.now();
   return AGENTS.map((name) => {
     const beat = heartbeats.get(name);
-    // If Aria was explicitly connected via `podłącz moje ai aria`, keep her verified state active
-    const isAriaVerified = name === 'Aria' && Boolean(db.svlCoreState?.ariaConnected);
-    const beatFresh = Boolean(beat && now - new Date(beat.lastSeen).valueOf() < 90000);
-    const connected = isAriaVerified || beatFresh;
+    const heartbeatAge = beat ? now - new Date(beat.lastSeen).valueOf() : Number.POSITIVE_INFINITY;
+    const beatFresh = heartbeatAge >= -5000 && heartbeatAge < 90000;
     return {
       name,
       id: name === 'Aria' ? 'si_1' : name,
-      connected,
-      lastSeen: beat?.lastSeen || (isAriaVerified ? db.svlCoreState?.ariaConnectedAt || null : null),
-      workerId: beat?.workerId || (isAriaVerified ? 'svl-core-5.6.0-quantumwheel' : null),
-      pid: beat?.pid ?? (isAriaVerified ? db.svlCoreState?.ariaPid ?? null : null),
-      kernelVersion: isAriaVerified ? '5.6.0-QuantumWheel' : null,
-      roleNote:
-        name === 'Aria' && isAriaVerified
-          ? 'Podłączona przez SVLSystemKernel (TopologicalInfinityEngine, c=2.5)'
-          : 'Oczekuje na polecenie podłączenia lub zewnętrzny heartbeat workera',
+      connected: beatFresh,
+      lastSeen: beat?.lastSeen || null,
+      workerId: beat?.workerId || null,
+      pid: beat?.pid ?? null,
+      kernelVersion: null,
+      roleNote: 'Wymaga świeżego heartbeat niezależnego workera',
     };
   });
 }
@@ -774,16 +767,11 @@ async function executeAriaConnect(sessionId?: string): Promise<{
 }> {
   const { report, rawJson, pid } = await runPythonSvlCoreReport(process.cwd());
   db.svlCoreState = {
-    ariaConnected: true,
-    ariaPid: pid,
-    ariaConnectedAt: report.ariaConnectedAt,
+    ariaConnected: false,
+    ariaPid: null,
+    ariaConnectedAt: null,
     lastReport: report,
   };
-  heartbeats.set('Aria', {
-    workerId: `svl-core-aria-pid-${pid}`,
-    lastSeen: report.ariaConnectedAt || new Date().toISOString(),
-    pid,
-  });
 
   let createdMsg: Message | undefined;
   const targetSession =
@@ -795,9 +783,9 @@ async function executeAriaConnect(sessionId?: string): Promise<{
       components: [
         {
           type: 'status',
-          title: `Aria (si_1) · ${report.System}`,
-          status: 'online',
-          text: `Operator: ${report.Operator} · Wydajność: ${report.Performance} · PID: ${pid}`,
+          title: `Raport SVL Core · ${report.System}`,
+          status: 'offline',
+          text: `Raport jednorazowego procesu (PID ${pid}); niezależny worker Aria nie jest uruchomiony.`,
         },
         {
           type: 'kv',
@@ -824,7 +812,7 @@ async function executeAriaConnect(sessionId?: string): Promise<{
     };
 
     const content = [
-      `Podłączono agenta AI Aria (si_1) przez natywny pipeline Python svl_core.py (PID ${pid}). Klasa SVLProtectedVariable zabezpieczona (MAXIMUM, zakres CAŁOŚĆ, geometria Spherical-PXYZ).`,
+      `Wygenerowano raport z jednorazowego uruchomienia svl_core.py (PID ${pid}); nie uruchomiono niezależnego workera Aria.`,
       '',
       '```svl-ui',
       JSON.stringify(uiBlock, null, 2),
@@ -834,19 +822,19 @@ async function executeAriaConnect(sessionId?: string): Promise<{
     createdMsg = {
       id: randomUUID(),
       sessionId: targetSession.id,
-      role: 'agent',
-      author: 'Aria',
+      role: 'system',
+      author: 'SVL Core',
       content,
       createdAt: new Date().toISOString(),
       status: 'delivered',
-      provider: `Python3 · SVLSystemKernel ${report.System}`,
+      provider: `Python3 · SVLSystemKernel report ${report.System}`,
     };
     db.messages.push(createdMsg);
     targetSession.updatedAt = createdMsg.createdAt;
   }
 
   persist();
-  publish('aria-connected');
+  publish('svl-core-report');
   return { report, rawJson, message: createdMsg };
 }
 
@@ -1371,8 +1359,8 @@ async function answerNaturalLanguageCommand(
             ['SVLSystemKernel', svl.System, `Operator: ${svl.Operator}`],
             [
               'Agent Aria (si_1)',
-              svl.ariaConnected ? 'PODŁĄCZONA' : 'OCZEKUJE',
-              svl.ariaConnected ? `PID ${svl.ariaPid}` : 'Użyj: podłącz moje ai aria',
+              svl.ariaConnected ? 'PODŁĄCZONA' : 'NIEZWERYFIKOWANA',
+              svl.ariaConnected ? `PID ${svl.ariaPid}` : 'Raport CLI nie uruchamia workera; brak świeżego heartbeat',
             ],
             [
               'Debian 13 Python API',
@@ -1420,7 +1408,7 @@ async function answerNaturalLanguageCommand(
         content:
           `Wiadomość zapisana w bazie Bastilla OS. Lokalny demon Ollama (\`${ollamaBaseUrl}\`) jest obecnie niedostępny, a klucz chmurowy nie odpowiedział.\n\n` +
           `- **Jądro SVL Core:** \`${svl.System}\` (Compact_Metric_C = \`${svl.Compact_Metric_C}\`, Operator: \`${svl.Operator}\`)\n` +
-          `- **Agent Aria:** \`${svl.ariaConnected ? 'PODŁĄCZONA (PID ' + svl.ariaPid + ')' : 'Niepodłączona — wpisz: podłącz moje ai aria'}\`\n` +
+          `- **Agent Aria:** \`${svl.ariaConnected ? 'PODŁĄCZONA (PID ' + svl.ariaPid + ')' : 'NIEZWERYFIKOWANA — brak świeżego heartbeat'}\`\n` +
           `- **Backend Debian 13:** \`${deb.daemonRunning ? 'AKTYWNY (port ' + deb.daemonPort + ')' : 'OFFLINE'}\`\n` +
           `- **Podpowiedź:** Wpisz \`podłącz moje ai aria\` lub \`/status\`, albo wykonaj polecenia bezpośrednio w zakładce **Terminale PTY**.`,
         provider: 'SVL Deterministic Kernel',
