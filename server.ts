@@ -15,6 +15,11 @@ import {
   isAriaConnectCommand,
   runPythonSvlCoreReport,
 } from './src/lib/svlAriaBridge';
+import {
+  hasValidOperatorSession,
+  isOperatorRequestAllowed,
+  isSameOrigin,
+} from './src/lib/operatorAccess.mjs';
 import type {
   AgentName,
   AgentState,
@@ -275,6 +280,10 @@ function secureEqual(a: string, b: string): boolean {
   return bufA.byteLength === bufB.byteLength && timingSafeEqual(bufA, bufB);
 }
 
+function operatorTokenRequired(): boolean {
+  return (process.env.SVL_OPERATOR_TOKEN || '').trim().length >= 32;
+}
+
 function isHttpsRequest(req: express.Request): boolean {
   return (
     req.secure ||
@@ -284,37 +293,27 @@ function isHttpsRequest(req: express.Request): boolean {
 }
 
 function getOperatorAuthState(req: express.Request): OperatorAuthState {
-  const cookieHeader = String(req.header('cookie') || '');
-  const cookieEntry = cookieHeader
-    .split(';')
-    .map((x) => x.trim())
-    .find((x) => x.startsWith('svl_session='));
-  const sessionTicket = cookieEntry ? cookieEntry.slice('svl_session='.length) : '';
-  const expiry = operatorSessions.get(sessionTicket) || 0;
-  if (expiry > Date.now()) {
+  const cookieHeader = req.header('cookie') || '';
+  const sessionValid = hasValidOperatorSession(cookieHeader, operatorSessions);
+  if (!isOperatorRequestAllowed({
+    cookieHeader,
+    sessions: operatorSessions,
+    tokenRequired: operatorTokenRequired(),
+    remoteAddress: req.socket.remoteAddress,
+  })) {
     return {
       tokenConfigured: operatorSecret.length >= 32,
       tokenLength: operatorSecret.length,
-      authenticated: true,
-      sessionSource: 'cookie',
-      httpsDetected: isHttpsRequest(req),
-    };
-  }
-  const explicitTokenRequired = Boolean((process.env.SVL_OPERATOR_TOKEN || '').trim().length >= 32);
-  if (!explicitTokenRequired) {
-    return {
-      tokenConfigured: operatorSecret.length >= 32,
-      tokenLength: operatorSecret.length,
-      authenticated: true,
-      sessionSource: 'local_loopback',
+      authenticated: false,
+      sessionSource: 'unauthenticated',
       httpsDetected: isHttpsRequest(req),
     };
   }
   return {
     tokenConfigured: operatorSecret.length >= 32,
     tokenLength: operatorSecret.length,
-    authenticated: false,
-    sessionSource: 'unauthenticated',
+    authenticated: true,
+    sessionSource: sessionValid ? 'cookie' : 'local_loopback',
     httpsDetected: isHttpsRequest(req),
   };
 }
@@ -630,7 +629,7 @@ async function buildServerHealth(req: express.Request): Promise<ServerHealth> {
     limitations: [
       'Środowisko wykonawcze AI Studio działa w kontenerze Linux (4.19.0-gvisor) bez demona systemd (PID 1) i fizycznego GPU.',
       'Terminale Bash, Python, Codex CLI, AI NLP oraz Admin Sudo wykonują rzeczywiste procesy w kontenerze przez PTY i WebSocket.',
-      'Agenci Alex, Aria, Astyria i Aurelius nie są symulowani — Aria podłącza się jawnie poleceniem „podłącz moje ai aria” z kodem SVLSystemKernel v5.6.0-QuantumWheel.',
+      'Agenci Alex, Aria, Astyria i Aurelius wymagają świeżego heartbeat niezależnych workerów; polecenie „podłącz moje ai aria” uruchamia tylko jednorazowy raport SVL Core.',
     ],
   };
 }
@@ -675,7 +674,7 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// Middleware protecting state when SVL_OPERATOR_TOKEN is explicitly enforced in env
+// Require an operator session remotely; the no-token development fallback is loopback-only.
 app.use('/api', (req, res, next) => {
   if (
     req.path === '/auth/login' ||
@@ -1410,7 +1409,7 @@ async function answerNaturalLanguageCommand(
           `- **Jądro SVL Core:** \`${svl.System}\` (Compact_Metric_C = \`${svl.Compact_Metric_C}\`, Operator: \`${svl.Operator}\`)\n` +
           `- **Agent Aria:** \`${svl.ariaConnected ? 'PODŁĄCZONA (PID ' + svl.ariaPid + ')' : 'NIEZWERYFIKOWANA — brak świeżego heartbeat'}\`\n` +
           `- **Backend Debian 13:** \`${deb.daemonRunning ? 'AKTYWNY (port ' + deb.daemonPort + ')' : 'OFFLINE'}\`\n` +
-          `- **Podpowiedź:** Wpisz \`podłącz moje ai aria\` lub \`/status\`, albo wykonaj polecenia bezpośrednio w zakładce **Terminale PTY**.`,
+          `- **Podpowiedź:** Wygeneruj raport SVL Core poleceniem \`podłącz moje ai aria\`, sprawdź \`/status\` albo wykonaj polecenia bezpośrednio w zakładce **Terminale PTY**.`,
         provider: 'SVL Deterministic Kernel',
       };
     }
@@ -1482,31 +1481,6 @@ app.post('/api/messages', async (req, res) => {
         500,
       );
     }
-  }
-
-  // If addressed specifically to Aria AND Aria is connected via SVLSystemKernel, Aria responds directly!
-  if (target === 'Aria' && db.svlCoreState?.ariaConnected) {
-    const { report, rawJson, pid } = await runPythonSvlCoreReport(process.cwd());
-    const replyContent = await answerNaturalLanguageCommand(
-      content,
-      db.messages.filter((m) => m.sessionId === sessionId),
-      attachments,
-    );
-    const ariaMsg: Message = {
-      id: randomUUID(),
-      sessionId,
-      role: 'agent',
-      author: 'Aria',
-      content: `${replyContent.content}\n\n---\n*SVL Core Telemetry (${report.System}, Compact_Metric_C=${report.Compact_Metric_C}, PID=${pid})*\n\`\`\`json\n${rawJson}\n\`\`\``,
-      createdAt: new Date().toISOString(),
-      status: 'delivered',
-      provider: `Aria · SVLSystemKernel ${report.System}`,
-    };
-    db.messages.push(ariaMsg);
-    session.updatedAt = ariaMsg.createdAt;
-    persist();
-    publish('messages');
-    return res.json({ user: userMsg, response: ariaMsg, provider: ariaMsg.provider });
   }
 
   // If addressed to a specific unverified agent, queue the job honestly without simulating!
@@ -1643,12 +1617,31 @@ const httpServer = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 httpServer.on('upgrade', (request, socket, head) => {
-  const parsedUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
-  if (parsedUrl.pathname === '/ws/terminal') {
-    wss.handleUpgrade(request, socket, head, (ws) => {
-      wss.emit('connection', ws, request, parsedUrl);
-    });
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
+  } catch {
+    socket.destroy();
+    return;
   }
+  const authorized = isOperatorRequestAllowed({
+    cookieHeader: request.headers.cookie || '',
+    sessions: operatorSessions,
+    tokenRequired: operatorTokenRequired(),
+    remoteAddress: request.socket.remoteAddress,
+  });
+  if (
+    parsedUrl.pathname !== '/ws/terminal'
+    || !authorized
+    || !isSameOrigin(request.headers.origin, request.headers.host)
+  ) {
+    socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+  wss.handleUpgrade(request, socket, head, (ws) => {
+    wss.emit('connection', ws, request, parsedUrl);
+  });
 });
 
 wss.on('connection', (ws: WebSocket, _req: http.IncomingMessage, parsedUrl: URL) => {
