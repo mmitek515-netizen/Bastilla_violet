@@ -1,0 +1,15 @@
+{
+  "id": "ai_desktop_nexus",
+  "name": "AI Desktop Nexus — diagnostyka rzeczywistego pulpitu",
+  "type": "html5-web",
+  "version": "9.0.0-real-status",
+  "author": "Bastilla OS SVL_System",
+  "description": "Panel odczytujący faktyczny stan Xvfb/XFCE/VNC/noVNC z /api/ai/desktop/status. Nie deklaruje aktywnego pulpitu, roota ani pracy agentów bez weryfikacji.",
+  "entry": "index.html",
+  "status": "ready",
+  "files": [
+    "index.html",
+    "app.json",
+    "README.md"
+  ]
+}

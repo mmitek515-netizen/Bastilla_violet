@@ -1,0 +1,22 @@
+[Unit]
+Description=Bastilla OS OpenCode engine (ChatGPT login on host)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bastilla-opencode
+Group=bastilla-opencode
+WorkingDirectory=/srv/bastillaos
+EnvironmentFile=-/etc/bastillaos/opencode.env
+ExecStart=/usr/local/bin/opencode serve --hostname 127.0.0.1 --port 4096
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

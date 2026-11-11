@@ -1,0 +1,34 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "module": "ESNext",
+    "types": ["vite/client", "node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "allowJs": true,
+    "jsx": "react-jsx",
+    "paths": {
+      "@/*": ["./*"]
+    },
+    "allowImportingTsExtensions": true,
+    "noEmit": true
+  },
+  "include": [
+    "server.ts",
+    "vite.config.ts",
+    "src/main.tsx",
+    "src/App.tsx",
+    "src/components/RichBlocks.tsx",
+    "src/components/MultiTerminalPanel.tsx",
+    "src/lib/types.ts",
+    "src/lib/api.ts",
+    "src/lib/codexCliBridge.ts",
+    "src/lib/svlAriaBridge.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

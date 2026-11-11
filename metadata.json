@@ -1,0 +1,8 @@
+{
+  "name": "Bastilla OS — SVL System & Debian 13",
+  "description": "Zintegrowany system Bastilla OS / SVL_System (v5.6.0-QuantumWheel) z backendem Debian 13, terminalami PTY/WebSocket (Bash, Python, OpenAI Codex CLI, AI NLP, Admin Sudo), diagnostyką Ollama Vision, uwierzytelnianiem SVL_OPERATOR_TOKEN i synchronizacją GitHub.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

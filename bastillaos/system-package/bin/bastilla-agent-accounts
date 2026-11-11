@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+# Separate Linux identities for BastillaOS AI agents. No change to UID 0.
+set -Eeuo pipefail
+
+readonly GROUP_NAME="bastilla-agents"
+readonly SUDOERS_FILE="/etc/sudoers.d/90-bastilla-ai-agents"
+readonly AGENTS=(alex aria astyria aurelius)
+
+usage() {
+  cat <<'USAGE'
+Usage: bastilla-agent-accounts provision
+       bastilla-agent-accounts status
+       bastilla-agent-accounts run <alex|aria|astyria|aurelius> -- <executable> [args...]
+       bastilla-agent-accounts grant-root --confirm FULL_ROOT_FOR_FOUR_AGENTS
+       bastilla-agent-accounts revoke-root
+
+Provision creates four separate locked-password Linux users, each with a private
+home directory. grant-root is an explicit administrator action, not an install
+default: it gives every agent passwordless sudo (FULL ROOT). Do not enable it
+for an untrusted model/runtime or a remotely exposed control endpoint.
+USAGE
+}
+
+require_root() {
+  if [[ "$EUID" -ne 0 ]]; then
+    echo "Administrator privileges required; run with sudo." >&2
+    exit 1
+  fi
+}
+
+valid_agent() {
+  case "${1:-}" in
+    alex|aria|astyria|aurelius) return 0 ;;
+    *) echo "Unknown agent: ${1:-<none>}" >&2; return 1 ;;
+  esac
+}
+
+provision() {
+  require_root
+  if ! getent group "$GROUP_NAME" >/dev/null; then
+    groupadd --system "$GROUP_NAME"
+  fi
+  local agent username home
+  for agent in "${AGENTS[@]}"; do
+    username="bastilla-$agent"
+    home="/home/$username"
+    if id "$username" >/dev/null 2>&1; then
+      echo "$username: exists (preserving current account)"
+      continue
+    fi
+    useradd --system --create-home --home-dir "$home" \
+      --shell /bin/bash --gid "$GROUP_NAME" --password '!' "$username"
+    chmod 0700 "$home"
+    echo "$username: created with locked password and private home"
+  done
+}
+
+status() {
+  local agent username state root_state="not granted"
+  [[ -f "$SUDOERS_FILE" ]] && root_state="sudoers file present; verify with sudo -l"
+  for agent in "${AGENTS[@]}"; do
+    username="bastilla-$agent"
+    state="not provisioned"
+    if id "$username" >/dev/null 2>&1; then
+      state="uid=$(id -u "$username") gid=$(id -g "$username")"
+    fi
+    printf '%s: %s | root: %s\n' "$username" "$state" "$root_state"
+  done
+}
+
+grant_root() {
+  require_root
+  if [[ "${1:-}" != "--confirm" || "${2:-}" != "FULL_ROOT_FOR_FOUR_AGENTS" || "$#" -ne 2 ]]; then
+    echo "Full root access requires: grant-root --confirm FULL_ROOT_FOR_FOUR_AGENTS" >&2
+    exit 2
+  fi
+  command -v visudo >/dev/null || { echo "Install sudo first." >&2; exit 1; }
+  local agent file
+  for agent in "${AGENTS[@]}"; do
+    id "bastilla-$agent" >/dev/null 2>&1 || { echo "Provision accounts first." >&2; exit 1; }
+  done
+  install -d -m 0755 /etc/sudoers.d
+  file="$(mktemp /etc/sudoers.d/.bastilla-agents.XXXXXXXX)"
+  trap 'rm -f -- "$file"' EXIT
+  for agent in "${AGENTS[@]}"; do
+    printf 'bastilla-%s ALL=(ALL:ALL) NOPASSWD: ALL\n' "$agent"
+  done > "$file"
+  chmod 0440 "$file"
+  visudo -cf "$file" >/dev/null
+  mv -f -- "$file" "$SUDOERS_FILE"
+  trap - EXIT
+  echo "Full root via passwordless sudo enabled for four agents. Audit and protect the host."
+}
+
+revoke_root() {
+  require_root
+  rm -f -- "$SUDOERS_FILE"
+  echo "Bastilla AI sudoers rule removed; system-wide sudoers may still grant privileges."
+}
+
+run_as_agent() {
+  require_root
+  local agent="${1:-}"
+  valid_agent "$agent" || exit 2
+  shift
+  if [[ "${1:-}" != "--" || "$#" -lt 2 ]]; then
+    echo "Use: run <agent> -- <executable> [args...]" >&2
+    exit 2
+  fi
+  shift
+  id "bastilla-$agent" >/dev/null 2>&1 || { echo "Agent account not provisioned." >&2; exit 1; }
+  command -v logger >/dev/null 2>&1 && logger -t bastilla-agent-accounts "run user=bastilla-$agent command=$1" || true
+  exec runuser -u "bastilla-$agent" -- "$@"
+}
+
+case "${1:-}" in
+  provision) [[ "$#" -eq 1 ]] || { usage; exit 2; }; provision ;;
+  status) [[ "$#" -eq 1 ]] || { usage; exit 2; }; status ;;
+  grant-root) shift; grant_root "$@" ;;
+  revoke-root) [[ "$#" -eq 1 ]] || { usage; exit 2; }; revoke_root ;;
+  run) shift; run_as_agent "$@" ;;
+  *) usage; exit 2 ;;
+esac

@@ -1,0 +1,69 @@
+services:
+  bastilla-os:
+    build:
+      context: .
+      dockerfile: debian13/system/Dockerfile
+    image: bastilla-os-svl-system:latest
+    container_name: bastilla-os-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      DATA_DIR: /var/lib/bastillaos/data
+      DEBIAN13_API_PORT: "8765"
+      DEBIAN13_STATE_DIR: /var/lib/bastillaos/debian13_state
+      WORKSPACE_DIR: /var/lib/bastillaos/workspace
+      SVL_OPERATOR_TOKEN: "${SVL_OPERATOR_TOKEN:?Set SVL_OPERATOR_TOKEN to a 32+ char random secret}"
+      SVL_LINUX_SYNC_TOKEN: "${SVL_LINUX_SYNC_TOKEN:-}"
+      SVL_HTTPS: "${SVL_HTTPS:-true}"
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://ollama:11434}"
+      OLLAMA_MODEL: "${OLLAMA_MODEL:-qwen2.5-vl:14b}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+    volumes:
+      - bastilla-data:/var/lib/bastillaos
+      - codex-home:/var/lib/bastillaos/data/.codex
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3000/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    depends_on:
+      - ollama
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: bastilla-ollama
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "--version"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+
+  https-proxy:
+    image: caddy:2-alpine
+    container_name: bastilla-https-proxy
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    command: caddy reverse-proxy --from ${BASTILLA_DOMAIN:-localhost} --to bastilla-os:3000
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - bastilla-os
+
+volumes:
+  bastilla-data:
+  codex-home:
+  ollama-models:
+  caddy-data:
+  caddy-config:

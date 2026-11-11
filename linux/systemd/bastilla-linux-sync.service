@@ -1,0 +1,20 @@
+[Unit]
+Description=Bastilla OS authenticated Linux host observer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bastilla-sync
+Group=bastilla-sync
+EnvironmentFile=/etc/bastillaos/linux-sync.env
+ExecStart=/usr/bin/python3 /opt/bastillaos/linux-sync-agent.py
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

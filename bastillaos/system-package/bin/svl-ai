@@ -1,0 +1,113 @@
+#!/usr/bin/env node
+/**
+ * Bash/terminal entrypoint for genuine BastillaOS AI runtime services.
+ * All output is obtained from the running SVL backend; nothing is simulated.
+ * SVL_AI_API_URL=http://127.0.0.1:3000
+ * SVL_AI_ACCESS_TOKEN=<configured API token>
+ */
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
+const base = (process.env.SVL_AI_API_URL || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+const token = (process.env.SVL_AI_ACCESS_TOKEN || '').trim();
+const [command, ...args] = process.argv.slice(2);
+const scopes = new Set(['global', 'all', 'agent:Aria', 'agent:Alex', 'agent:Astyria', 'agent:Aurelius']);
+const usage = [
+  'svl-ai status',
+  'svl-ai remember <global|agent:Name> "<text>"',
+  'svl-ai recall "<query>" [global|all|agent:Name]',
+  'svl-ai list [global|all|agent:Name]',
+  'svl-ai forget <uuid>',
+  'svl-ai vision <image.jpg|image.png|image.webp> ["question"]',
+  'svl-ai render "<prompt>" <output.png>',
+].join('\n');
+function validateScope(value = 'global') {
+  if (!scopes.has(value)) throw new Error('Nieznany zakres pamięci: ' + value);
+  return value;
+}
+async function call(route, method = 'GET', payload) {
+  const signal = AbortSignal.timeout(190000);
+  const response = await fetch(base + '/api/ai/runtime' + route, {
+    method,
+    headers: {
+      ...(payload ? { 'content-type': 'application/json' } : {}),
+      ...(token ? { 'x-svl-ai-token': token } : {}),
+    },
+    ...(payload ? { body: JSON.stringify(payload) } : {}),
+    signal,
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.success) {
+    throw new Error('HTTP ' + response.status + ': ' + String(result?.error || 'Brak poprawnej odpowiedzi API.'));
+  }
+  return result;
+}
+function output(value) { process.stdout.write(JSON.stringify(value, null, 2) + '\n'); }
+async function run() {
+  switch (command) {
+    case 'status':
+      output(await call('/status'));
+      break;
+    case 'remember': {
+      const [target, ...parts] = args;
+      if (!target || !parts.length) throw new Error(usage);
+      const scope = validateScope(target);
+      if (scope === 'all') throw new Error('Wpis musi mieć konkretny zakres, nie all.');
+      output(await call('/memory', 'POST', { text: parts.join(' '), scope, kind: 'fact' }));
+      break;
+    }
+    case 'recall': {
+      const [query, target] = args;
+      if (!query) throw new Error(usage);
+      output(await call('/memory/search?q=' + encodeURIComponent(query) + '&scope=' + encodeURIComponent(validateScope(target))));
+      break;
+    }
+    case 'list':
+      output(await call('/memory?scope=' + encodeURIComponent(validateScope(args[0]))));
+      break;
+    case 'forget':
+      if (!/^[0-9a-f-]{36}$/i.test(args[0] || '')) throw new Error(usage);
+      output(await call('/memory/' + encodeURIComponent(args[0]), 'DELETE'));
+      break;
+    case 'vision': {
+      const [file, ...promptParts] = args;
+      if (!file) throw new Error(usage);
+      const ext = path.extname(file).toLowerCase();
+      const mime = ({ '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp' })[ext];
+      if (!mime) throw new Error('Obsługiwane obrazy: .jpg, .jpeg, .png, .webp.');
+      const data = await fs.readFile(file);
+      if (data.length === 0 || data.length > 8 * 1024 * 1024) throw new Error('Obraz musi mieć od 1 B do 8 MiB.');
+      output(await call('/vision/analyze', 'POST', {
+        image: 'data:' + mime + ';base64,' + data.toString('base64'),
+        prompt: promptParts.join(' ') || 'Co widać na obrazie?',
+      }));
+      break;
+    }
+    case 'render': {
+      const [prompt, destination] = args;
+      if (!prompt || !destination || args.length !== 2) throw new Error(usage);
+      const result = await call('/images/generate', 'POST', { prompt, size: '1024x1024' });
+      if (result.mimeType !== 'image/png' || !/^[A-Za-z0-9+/]+={0,2}$/.test(result.image || '')) {
+        throw new Error('API nie zwróciło poprawnego obrazu PNG.');
+      }
+      const image = Buffer.from(result.image, 'base64');
+      if (!image.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) {
+        throw new Error('Odpowiedź API nie zawiera poprawnego PNG.');
+      }
+      // Avoid overwriting operator files.
+      await fs.writeFile(destination, image, { flag: 'wx', mode: 0o600 });
+      output({ success: true, model: result.model, file: path.resolve(destination), bytes: image.length });
+      break;
+    }
+    default:
+      if (command === 'help' || command === '--help' || command === '-h') {
+        process.stdout.write(usage + '\n');
+        return;
+      }
+      throw new Error(usage);
+  }
+}
+run().catch((error) => {
+  console.error('[svl-ai]', error instanceof Error ? error.message : String(error));
+  process.exitCode = 1;
+});

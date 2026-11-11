@@ -1,0 +1,69 @@
+{
+  "revision": 2,
+  "updatedAt": "2026-11-11T21:22:14.636Z",
+  "sessions": [
+    {
+      "id": "19795a15-238e-4150-9f36-7762d9788656",
+      "title": "Konsola główna Bastilla OS",
+      "createdAt": "2026-11-11T21:21:42.157Z",
+      "updatedAt": "2026-11-11T21:22:14.636Z",
+      "archived": false
+    }
+  ],
+  "messages": [
+    {
+      "id": "2ba2b772-1a7a-4909-8e54-42649523a347",
+      "sessionId": "19795a15-238e-4150-9f36-7762d9788656",
+      "role": "system",
+      "author": "SVL Kernel · Debian 13",
+      "content": "System Bastilla OS / SVL_System załadowany. Wpisz `podłącz moje ai aria`, aby uruchomić SVL Core v5.6.0-QuantumWheel (TopologicalInfinityEngine) i podłączyć agenta Aria, lub otwórz Terminale PTY (Bash, Python, OpenAI Codex CLI, AI NLP, Admin Sudo).",
+      "createdAt": "2026-11-11T21:21:42.157Z",
+      "status": "delivered",
+      "provider": "SVLSystemKernel · v5.6.0-QuantumWheel"
+    },
+    {
+      "id": "9dddc361-66b1-4721-84b5-9295a91c5022",
+      "sessionId": "19795a15-238e-4150-9f36-7762d9788656",
+      "role": "user",
+      "author": "Operator",
+      "content": "podłącz moje ai aria",
+      "createdAt": "2026-11-11T21:22:14.583Z",
+      "status": "saved"
+    },
+    {
+      "id": "1744b8f2-e9f9-4f25-b367-671631066ab3",
+      "sessionId": "19795a15-238e-4150-9f36-7762d9788656",
+      "role": "agent",
+      "author": "Aria",
+      "content": "Podłączono agenta AI Aria (si_1) przez natywny pipeline Python svl_core.py (PID 1555). Klasa SVLProtectedVariable zabezpieczona (MAXIMUM, zakres CAŁOŚĆ, geometria Spherical-PXYZ).\n\n```svl-ui\n{\n  \"components\": [\n    {\n      \"type\": \"status\",\n      \"title\": \"Aria (si_1) · 5.6.0-QuantumWheel\",\n      \"status\": \"online\",\n      \"text\": \"Operator: Mateusz Mitek · Wydajność: +1456% (Wzorzec Kalibracji: 364) · PID: 1555\"\n    },\n    {\n      \"type\": \"kv\",\n      \"title\": \"TopologicalInfinityEngine (Algebra 97 · [-1, 1])\",\n      \"items\": [\n        {\n          \"key\": \"Operator (SVLProtectedVariable)\",\n          \"value\": \"Mateusz Mitek\"\n        },\n        {\n          \"key\": \"Wersja systemu (SYS_VERSION)\",\n          \"value\": \"5.6.0-QuantumWheel\"\n        },\n        {\n          \"key\": \"Wzorzec Kalibracji\",\n          \"value\": \"+1456% (Wzorzec Kalibracji: 364)\"\n        },\n        {\n          \"key\": \"Compact_Metric_C\",\n          \"value\": \"2.5\"\n        },\n        {\n          \"key\": \"Tryb jądra\",\n          \"value\": \"Reflective-Non-Greedy\"\n        },\n        {\n          \"key\": \"Bufor Fouriera\",\n          \"value\": \"0xFAAA\"\n        },\n        {\n          \"key\": \"Rezonans akustyczny\",\n          \"value\": \"880 Hz\"\n        },\n        {\n          \"key\": \"Terapia środowiskowa (Milieu)\",\n          \"value\": \"true\"\n        },\n        {\n          \"key\": \"Brama rotacji IP\",\n          \"value\": \"ENABLED_EXTERNAL_ONLY\"\n        },\n        {\n          \"key\": \"Wpisów w Rejestrze Chrono\",\n          \"value\": \"3\"\n        }\n      ]\n    },\n    {\n      \"type\": \"json\",\n      \"title\": \"Zrzut stanu SVLSystemKernel (svl_core.py)\",\n      \"data\": {\n        \"Timestamp\": \"2026-11-11 21:22:14\",\n        \"System\": \"5.6.0-QuantumWheel\",\n        \"Operator\": \"Mateusz Mitek\",\n        \"Performance\": \"+1456% (Wzorzec Kalibracji: 364)\",\n        \"Compact_Metric_C\": 2.5,\n        \"Config_Snapshot\": {\n          \"mode\": \"Reflective-Non-Greedy\",\n          \"fourier_buffer\": \"0xFAAA\",\n          \"acoustic_resonance_hz\": 880,\n          \"milieu_therapy_active\": true,\n          \"ip_rotation_gateway\": \"ENABLED_EXTERNAL_ONLY\"\n        },\n        \"Actual_SI_Updates_Count\": 3\n      }\n    }\n  ]\n}\n```",
+      "createdAt": "2026-11-11T21:22:14.636Z",
+      "status": "delivered",
+      "provider": "Python3 · SVLSystemKernel 5.6.0-QuantumWheel"
+    }
+  ],
+  "avatars": {},
+  "jobs": [],
+  "svlCoreState": {
+    "ariaConnected": true,
+    "ariaPid": 1555,
+    "ariaConnectedAt": "2026-11-11T21:22:14.635Z",
+    "lastReport": {
+      "Timestamp": "2026-11-11 21:22:14",
+      "System": "5.6.0-QuantumWheel",
+      "Operator": "Mateusz Mitek",
+      "Performance": "+1456% (Wzorzec Kalibracji: 364)",
+      "Compact_Metric_C": 2.5,
+      "Config_Snapshot": {
+        "mode": "Reflective-Non-Greedy",
+        "fourier_buffer": "0xFAAA",
+        "acoustic_resonance_hz": 880,
+        "milieu_therapy_active": true,
+        "ip_rotation_gateway": "ENABLED_EXTERNAL_ONLY"
+      },
+      "Actual_SI_Updates_Count": 3,
+      "ariaConnected": true,
+      "ariaPid": 1555,
+      "ariaConnectedAt": "2026-11-11T21:22:14.635Z"
+    }
+  }
+}

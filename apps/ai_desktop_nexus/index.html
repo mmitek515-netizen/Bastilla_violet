@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Desktop Nexus — status rzeczywisty</title>
+  <style>
+    :root{color-scheme:dark;font-family:system-ui,sans-serif;background:#080f1c;color:#e0eef9}
+    body{margin:0;min-height:100vh;display:grid;place-items:center;padding:16px;box-sizing:border-box}
+    main{width:min(100%,760px);padding:24px;border-radius:16px;border:1px solid #29465d;background:#101d30}
+    h1{font-size:1.45rem;margin:0 0 8px}p{line-height:1.6;color:#b9c9d7}
+    .facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px;margin:18px 0}
+    .fact{background:#0a1424;padding:14px;border:1px solid #203449;border-radius:10px}
+    .fact strong{display:block;font-size:1.15rem;margin-top:6px;color:#f3d58a}
+    button,a.button{display:inline-block;padding:10px 16px;border:1px solid #34718c;color:#dcf7ff;background:#143344;border-radius:8px;text-decoration:none;cursor:pointer}
+    button:disabled{opacity:.6;cursor:default}#viewer[hidden]{display:none}
+    pre{white-space:pre-wrap;word-wrap:break-word;font-size:.8rem;color:#adc3d4}
+    small{color:#9bb0c2}
+  </style>
+</head>
+<body>
+<main>
+  <h1>AI Desktop Nexus</h1>
+  <p>To jest panel diagnostyczny, a nie symulacja zdalnego pulpitu. Dostępność usług jest sprawdzana bezpośrednio przez backend Linux.</p>
+  <p id="message" role="status" aria-live="polite">Odczytuję /api/ai/desktop/status...</p>
+  <div class="facts">
+    <div class="fact">Serwer X11 (:99)<strong id="display">NIEZWERYFIKOWANO</strong></div>
+    <div class="fact">VNC (localhost)<strong id="vnc">NIEZWERYFIKOWANO</strong></div>
+    <div class="fact">noVNC / websockify<strong id="web">NIEZWERYFIKOWANO</strong></div>
+    <div class="fact">Sterowanie agentów<strong id="agents">NIEZWERYFIKOWANO</strong></div>
+  </div>
+  <button id="refresh" type="button">Sprawdź ponownie</button>
+  <a id="viewer" class="button" hidden rel="noopener noreferrer" target="_blank">Otwórz prywatny pulpit</a>
+  <p><small id="timestamp">Brak ostatniego poprawnego pomiaru.</small></p>
+  <pre id="tools"></pre>
+  <p><small>Połączenie TCP i obecność procesu nie potwierdzają jeszcze obrazu, uwierzytelnienia ani możliwości sterowania przez agentów. Bez backendu pokazujemy NIEZWERYFIKOWANO.</small></p>
+</main>
+<script>
+  const el=id=>document.getElementById(id);
+  const label=(value,known)=>known?(value?'WYKRYTO':'BRAK'):'NIEZWERYFIKOWANO';
+  async function refresh(){
+    el('refresh').disabled=true;
+    el('viewer').hidden=true;
+    el('message').textContent='Sprawdzam stan usług na backendzie...';
+    try{
+      const response=await fetch('/api/ai/desktop/status',{cache:'no-store'});
+      if(!response.ok)throw new Error('HTTP '+response.status);
+      const status=await response.json();
+      if(status.success!==true||status.source!=='backend-local-socket-and-executable-check')throw new Error('Brak wiarygodnego odczytu backendu');
+      el('display').textContent=label(status.displaySocket,true);
+      el('vnc').textContent=label(status.vncTcp,true);
+      el('web').textContent=label(status.webTcp,true);
+      el('agents').textContent=status.agentControlVerified===true?'POTWIERDZONE':'NIEPOTWIERDZONE';
+      el('message').textContent=status.message||'Stan usług odczytany z backendu';
+      el('timestamp').textContent='Źródło: '+status.scope+' · Pomiar: '+status.observedAt;
+      el('tools').textContent=Array.isArray(status.tools)?status.tools.map(t=>t.id+': '+label(t.installed,true)).join('\n'):'Brak danych o narzędziach';
+      if(status.readyForOperator===true && typeof status.viewerUrl==='string'){
+        const url=new URL(status.viewerUrl);
+        if(url.protocol==='https:' && !url.username && !url.password){
+          el('viewer').href=url.toString();el('viewer').hidden=false;
+        }
+      }
+    }catch(error){
+      for(const id of ['display','vnc','web','agents'])el(id).textContent='NIEZWERYFIKOWANO';
+      el('message').textContent='Backend niedostępny lub błędny odczyt. Nie zakładamy, że pulpit działa. '+String(error.message||error);
+      el('timestamp').textContent='Brak aktualnego pomiaru';
+      el('tools').textContent='';
+    }finally{el('refresh').disabled=false}
+  }
+  el('refresh').addEventListener('click',refresh);
+  refresh();
+</script>
+</body>
+</html>
