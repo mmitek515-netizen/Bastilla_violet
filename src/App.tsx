@@ -48,7 +48,7 @@ const AGENTS: AgentName[] = ['Alex', 'Aria', 'Astyria', 'Aurelius'];
 
 const WELCOME_SUGGESTIONS: { label: string; prompt: string }[] = [
   {
-    label: 'Podłącz AI Aria (SVL Core v5.6.0-QuantumWheel)',
+    label: 'Uruchom raport SVL Core (bez workera Aria)',
     prompt: 'podłącz moje ai aria',
   },
   {
