@@ -6,6 +6,7 @@
 export interface VisionModelSelection {
   requested: string;
   model: string | null;
+  models: string[];
   reachable: boolean;
   modelInstalled: boolean;
   visionSupported: boolean;
@@ -37,7 +38,7 @@ export async function resolveVisionModel({
   const preferred = requested.trim() || 'auto';
   const base = baseUrl.trim().replace(/\/+$/, '');
   const initial: VisionModelSelection = {
-    requested: preferred, model: null, reachable: false,
+    requested: preferred, model: null, models: [], reachable: false,
     modelInstalled: false, visionSupported: false, inspected: 0,
   };
   let response: Response;
@@ -55,13 +56,14 @@ export async function resolveVisionModel({
     return { ...initial, reachable: true, error: 'Nieprawidłowa lista modeli Ollama.' };
   }
   const installed = models.filter(tag => nameOf(tag));
+  const installedNames = installed.map(nameOf);
   const automatic = preferred.toLowerCase() === 'auto';
   const candidates = automatic
     ? [...installed].sort((a, b) => priority(b) - priority(a) || Number(b.size || 0) - Number(a.size || 0))
     : installed.filter(tag => nameOf(tag) === preferred);
   if (!candidates.length) {
     return {
-      ...initial, reachable: true,
+      ...initial, reachable: true, models: installedNames,
       error: automatic
         ? 'Brak pobranych modeli w Ollama. Nie instaluję nic automatycznie.'
         : 'Model "' + preferred + '" nie jest pobrany na tym hoście. Sprawdź ollama list.',
@@ -84,7 +86,7 @@ export async function resolveVisionModel({
       const body: any = await show.json();
       const capabilities = Array.isArray(body?.capabilities) ? body.capabilities : [];
       if (capabilities.includes('vision')) {
-        return { ...initial, reachable: true, model: name, modelInstalled: true,
+        return { ...initial, reachable: true, model: name, models: installedNames, modelInstalled: true,
           visionSupported: true, inspected };
       }
       failureReason = 'Model ' + name + ' nie zgłasza capabilities: vision.';
@@ -93,7 +95,7 @@ export async function resolveVisionModel({
         String(error instanceof Error ? error.message : error).slice(0,100);
     }
   }
-  return { ...initial, reachable: true,
+  return { ...initial, reachable: true, models: installedNames,
     modelInstalled: !automatic && candidates.length > 0, inspected,
     error: failureReason || 'Brak modelu z potwierdzoną obsługą obrazów. Sprawdź ollama show <tag>.',
   };

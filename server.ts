@@ -15,6 +15,7 @@ import {
   isAriaConnectCommand,
   runPythonSvlCoreReport,
 } from './src/lib/svlAriaBridge';
+import { resolveVisionModel } from './src/kernel/visionModel';
 import type {
   AgentName,
   AgentState,
@@ -372,32 +373,29 @@ async function getHardwareResources() {
 
 async function checkOllamaStatus(): Promise<ModelState> {
   const resources = await getHardwareResources();
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2000);
+  const signal = AbortSignal.timeout(2000);
   try {
-    const r = await fetch(`${ollamaBaseUrl}/api/tags`, { signal: controller.signal });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = (await r.json()) as { models?: { name?: string }[] };
-    const models = (data.models || []).map((m) => m.name || '').filter(Boolean);
-    const selected =
-      models.find((m) => m.includes('14b') || m.includes('vision') || m.includes('vl')) ||
-      models[0] ||
-      null;
-    const visionCapable = Boolean(
-      selected && /vision|vl|llava|minicpm|qwen2\.5-vl|llama3\.2-vision/i.test(selected),
-    );
-    return {
-      reachable: true,
+    let selection = await resolveVisionModel({
       baseUrl: ollamaBaseUrl,
-      model: selected,
+      requested: preferredOllamaModel,
+      signal,
+    });
+    if (!selection.model && preferredOllamaModel.toLowerCase() !== 'auto') {
+      selection = await resolveVisionModel({ baseUrl: ollamaBaseUrl, requested: 'auto', signal });
+    }
+    return {
+      reachable: selection.reachable,
+      baseUrl: ollamaBaseUrl,
+      model: selection.model,
       preferredModel: preferredOllamaModel,
       fallbackVisionModel,
-      models,
-      visionCapable,
+      models: selection.models,
+      visionCapable: selection.visionSupported,
+      ...(selection.error ? { error: selection.error } : {}),
       resources,
       logs: ollamaLogs.slice(-12),
     };
-  } catch (e) {
+  } catch (error) {
     return {
       reachable: false,
       baseUrl: ollamaBaseUrl,
@@ -406,12 +404,10 @@ async function checkOllamaStatus(): Promise<ModelState> {
       fallbackVisionModel,
       models: [],
       visionCapable: false,
-      error: e instanceof Error ? e.message : 'Brak połączenia z demonem Ollama na porcie 11434',
+      error: error instanceof Error ? error.message : 'Brak połączenia z demonem Ollama na porcie 11434',
       resources,
       logs: ollamaLogs.slice(-12),
     };
-  } finally {
-    clearTimeout(timer);
   }
 }
 
