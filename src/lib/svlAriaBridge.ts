@@ -66,9 +66,9 @@ export async function runPythonSvlCoreReport(cwd = process.cwd()): Promise<{
       ip_rotation_gateway: String(parsed.Config_Snapshot?.ip_rotation_gateway || 'ENABLED_EXTERNAL_ONLY'),
     },
     Actual_SI_Updates_Count: Number(parsed.Actual_SI_Updates_Count ?? 3),
-    ariaConnected: true,
-    ariaPid: pid,
-    ariaConnectedAt: new Date().toISOString(),
+    ariaConnected: false,
+    ariaPid: null,
+    ariaConnectedAt: null,
   };
   return {
     report,
