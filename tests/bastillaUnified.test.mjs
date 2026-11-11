@@ -6,6 +6,7 @@ import {
   isAriaConnectCommand,
   runPythonSvlCoreReport,
 } from '../src/lib/svlAriaBridge';
+import { hasValidOperatorSession } from '../src/lib/operatorAuth';
 import { parseCodexDeviceAuthOutput } from '../src/lib/codexCliBridge';
 
 test('TopologicalInfinityEngine Algebra 97 compactifies [-inf, inf] to [-1, 1] and computes c = 2.5', () => {
@@ -23,6 +24,14 @@ test('isAriaConnectCommand recognizes Polish command "podłącz moje ai aria"', 
   assert.equal(isAriaConnectCommand('zwykłe pytanie'), false);
 });
 
+test('operator authentication requires an unexpired session', () => {
+  const now = Date.now();
+  assert.equal(hasValidOperatorSession(now + 1, now), true);
+  assert.equal(hasValidOperatorSession(now, now), false);
+  assert.equal(hasValidOperatorSession(undefined, now), false);
+  assert.equal(hasValidOperatorSession(Number.NaN, now), false);
+});
+
 test('runPythonSvlCoreReport executes svl_core.py and returns SVLSystemKernel 5.6.0-QuantumWheel report', async () => {
   const { report, rawJson, pid } = await runPythonSvlCoreReport();
   assert.equal(report.System, '5.6.0-QuantumWheel');
@@ -33,7 +42,9 @@ test('runPythonSvlCoreReport executes svl_core.py and returns SVLSystemKernel 5.
   assert.equal(report.Config_Snapshot.fourier_buffer, '0xFAAA');
   assert.equal(report.Config_Snapshot.acoustic_resonance_hz, 880);
   assert.equal(report.Actual_SI_Updates_Count, 3);
-  assert.equal(report.ariaConnected, true);
+  assert.equal(report.ariaConnected, false);
+  assert.equal(report.ariaPid, null);
+  assert.equal(report.ariaConnectedAt, null);
   assert.ok(typeof pid === 'number');
   assert.ok(rawJson.includes('5.6.0-QuantumWheel'));
 });

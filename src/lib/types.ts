@@ -132,7 +132,7 @@ export type OperatorAuthState = {
   tokenConfigured: boolean;
   tokenLength: number;
   authenticated: boolean;
-  sessionSource: 'cookie' | 'local_loopback' | 'unauthenticated';
+  sessionSource: 'cookie' | 'unauthenticated';
   httpsDetected: boolean;
 };
 

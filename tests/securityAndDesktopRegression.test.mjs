@@ -6,6 +6,7 @@ const root = new URL('../', import.meta.url);
 const html = await readFile(new URL('apps/ai_desktop_nexus/index.html', root), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('apps/ai_desktop_nexus/app.json', root), 'utf8'));
 const server = await readFile(new URL('server.ts', root), 'utf8');
+const ariaBridge = await readFile(new URL('src/lib/svlAriaBridge.ts', root), 'utf8');
 
 test('legacy desktop never fabricates online agents, desktop stream, or terminal', () => {
   assert.match(html, /fetch\('\/api\/ai\/desktop\/status'/);
@@ -13,10 +14,23 @@ test('legacy desktop never fabricates online agents, desktop stream, or terminal
   assert.equal(manifest.status, 'ready');
   assert.equal(manifest.port, undefined);
 });
-test('legacy Git routes are retired and write authentication is mounted', () => {
+test('legacy Git routes are absent and write authentication is mounted', () => {
   assert.match(server, /app\.use\(requireGitHubWriteToken\)/);
-  assert.match(server, /app\.post\('\/api\/github\/export', \(_req, res\) => res\.status\(410\)/);
-  assert.match(server, /app\.post\('\/api\/github\/pull', \(_req, res\) => res\.status\(410\)/);
+  assert.doesNotMatch(server, /app\.post\('\/api\/github\/export'/);
+  assert.doesNotMatch(server, /app\.post\('\/api\/github\/pull'/);
   assert.doesNotMatch(server, /\['push', '-u', 'origin', 'main', '--force'\]/);
   assert.doesNotMatch(server, /https:\/\/\$\{username\}:\$\{token\}@github\.com/);
+});
+
+test('one-shot SVL Core reports do not claim a live Aria worker', () => {
+  assert.match(ariaBridge, /ariaConnected: false/);
+  assert.doesNotMatch(server, /heartbeats\.set\('Aria'/);
+  assert.doesNotMatch(server, /isAriaVerified/);
+  assert.match(server, /lastReport: db\.svlCoreState\?\.lastReport \?\? null/);
+});
+
+test('operator APIs require a valid session and protect GitHub writes separately', () => {
+  assert.match(server, /hasValidOperatorSession\(expiry, Date\.now\(\)\)/);
+  assert.doesNotMatch(server, /sessionSource: 'local_loopback'/);
+  assert.match(server, /app\.use\(requireGitHubWriteToken\)/);
 });

@@ -94,7 +94,7 @@ export const MultiTerminalPanel: React.FC<MultiTerminalPanelProps> = ({ onAriaCo
     ],
     'ai-nlp': [
       '[System] Terminal AI z poleceniami języka naturalnego.',
-      'Wpisz "podłącz moje ai aria", aby uruchomić SVL Core v5.6.0-QuantumWheel i podłączyć agenta Aria.',
+      'Wpisz "podłącz moje ai aria", aby wykonać jednorazowy raport SVL Core; nie uruchamia on workera Aria.',
     ],
     'admin-sudo': [
       '[System] Terminal administracyjny z kontrolowanym sudo i zapisem do data/admin_audit.log.',

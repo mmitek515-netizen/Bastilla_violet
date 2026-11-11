@@ -48,7 +48,7 @@ const AGENTS: AgentName[] = ['Alex', 'Aria', 'Astyria', 'Aurelius'];
 
 const WELCOME_SUGGESTIONS: { label: string; prompt: string }[] = [
   {
-    label: 'Podłącz AI Aria (SVL Core v5.6.0-QuantumWheel)',
+    label: 'Uruchom jednorazowy raport SVL Core',
     prompt: 'podłącz moje ai aria',
   },
   {
@@ -270,7 +270,7 @@ export function App() {
       await api.connectAria();
       await refresh(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Nie udało się podłączyć AI Aria.');
+      setError(e instanceof Error ? e.message : 'Nie udało się wykonać raportu SVL Core.');
     } finally {
       setBusy(false);
     }
@@ -651,7 +651,7 @@ export function App() {
                 {activeSession?.title || 'Konsola główna'} ·{' '}
                 {svlCore?.ariaConnected
                   ? `Aria (PID ${svlCore.ariaPid}) · Metric C=${svlCore.Compact_Metric_C}`
-                  : 'Gotowy na polecenie: podłącz moje ai aria'}
+                  : 'Worker Aria wymaga świeżego heartbeat'}
               </span>
             </div>
           </div>
@@ -1199,14 +1199,14 @@ export function App() {
                       disabled={busy}
                       onClick={() => void handleConnectAriaClick()}
                     >
-                      <Sparkles size={15} /> Wykonaj polecenie: podłącz moje ai aria (svl_core.py)
+                      <Sparkles size={15} /> Uruchom jednorazowy raport SVL Core (svl_core.py)
                     </button>
                   </div>
 
                   <p className="panel-intro">
-                    Cztery oryginalne tożsamości agentów. Żaden agent nie jest symulowany — Aria
-                    łączy się przez rzeczywiste wykonanie <code>svl_core.py</code>, a pozostali przez
-                    uwierzytelnione workery.
+                    Cztery oryginalne tożsamości agentów. Status online wymaga świeżego heartbeat
+                    uwierzytelnionego workera; <code>svl_core.py</code> wykonuje jednorazowy raport,
+                    nie uruchamia agenta.
                   </p>
 
                   {AGENTS.map((a) => {
