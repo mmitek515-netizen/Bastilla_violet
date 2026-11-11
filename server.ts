@@ -15,6 +15,13 @@ import {
   isAriaConnectCommand,
   runPythonSvlCoreReport,
 } from './src/lib/svlAriaBridge';
+import {
+  hasAllowedWebSocketOrigin,
+  hasValidOperatorSession,
+  isLoopbackAddress,
+  isLoopbackHost,
+  isOperatorAccessAllowed,
+} from './src/lib/operatorAccess.mjs';
 import type {
   AgentName,
   AgentState,
@@ -287,13 +294,7 @@ function isHttpsRequest(req: express.Request): boolean {
 
 function getOperatorAuthState(req: express.Request): OperatorAuthState {
   const cookieHeader = String(req.header('cookie') || '');
-  const cookieEntry = cookieHeader
-    .split(';')
-    .map((x) => x.trim())
-    .find((x) => x.startsWith('svl_session='));
-  const sessionTicket = cookieEntry ? cookieEntry.slice('svl_session='.length) : '';
-  const expiry = operatorSessions.get(sessionTicket) || 0;
-  if (expiry > Date.now()) {
+  if (hasValidOperatorSession(cookieHeader, operatorSessions)) {
     return {
       tokenConfigured: operatorSecret.length >= 32,
       tokenLength: operatorSecret.length,
@@ -303,7 +304,12 @@ function getOperatorAuthState(req: express.Request): OperatorAuthState {
     };
   }
   const explicitTokenRequired = Boolean((process.env.SVL_OPERATOR_TOKEN || '').trim().length >= 32);
-  if (!explicitTokenRequired) {
+  if (
+    !explicitTokenRequired &&
+    !req.header('x-forwarded-for') &&
+    isLoopbackAddress(req.socket.remoteAddress) &&
+    isLoopbackHost(req.header('host'))
+  ) {
     return {
       tokenConfigured: operatorSecret.length >= 32,
       tokenLength: operatorSecret.length,
@@ -1657,6 +1663,21 @@ const wss = new WebSocketServer({ noServer: true });
 httpServer.on('upgrade', (request, socket, head) => {
   const parsedUrl = new URL(request.url || '/', `http://${request.headers.host || 'localhost'}`);
   if (parsedUrl.pathname === '/ws/terminal') {
+    const explicitTokenRequired = Boolean((process.env.SVL_OPERATOR_TOKEN || '').trim().length >= 32);
+    if (
+      !hasAllowedWebSocketOrigin(request.headers.origin, request.headers.host) ||
+      !isOperatorAccessAllowed({
+        cookieHeader: String(request.headers.cookie || ''),
+        remoteAddress: request.socket.remoteAddress,
+        host: request.headers.host,
+        operatorSessions,
+        explicitTokenRequired,
+        forwardedFor: String(request.headers['x-forwarded-for'] || ''),
+      })
+    ) {
+      socket.end('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
+      return;
+    }
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit('connection', ws, request, parsedUrl);
     });
