@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+data/.operator_token
+data/workspace/
+debian13/system/__pycache__/

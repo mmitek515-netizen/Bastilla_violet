@@ -293,7 +293,14 @@ export function App() {
     setGitBusy(true);
     setError('');
     try {
-      const res = await api.githubSync(action);
+      const writeToken = action === 'status'
+        ? undefined
+        : window.prompt('Podaj SVL_GITHUB_WRITE_TOKEN backendu. Nie używaj GitHub PAT.')?.trim();
+      if (action !== 'status' && (!writeToken || writeToken.length < 32)) {
+        setError('Operacja wymaga tokenu zapisu backendu o długości co najmniej 32 znaków.');
+        return;
+      }
+      const res = await api.githubSync(action, writeToken);
       setGitOutput(res.output || 'Operacja zakończona pomyślnie.');
       await refresh(true);
     } catch (e) {
@@ -1068,7 +1075,7 @@ export function App() {
 
                   <div className="detail-card">
                     <div className="info-title">
-                      <HardDrive size={17} /> Ollama &amp; Model 14B Vision Uncensored
+                      <HardDrive size={17} /> Ollama &amp; Model 14B Vision
                     </div>
                     <div className="metric-grid">
                       <div>
@@ -1096,6 +1103,16 @@ export function App() {
                         </strong>
                       </div>
                     </div>
+                    <p>
+                      Obsługa obrazów:{' '}
+                      <strong>
+                        {!health?.ollama.reachable
+                          ? 'NIEZWERYFIKOWANA'
+                          : health.ollama.visionCapable
+                            ? 'POTWIERDZONA przez /api/show'
+                            : 'BRAK POTWIERDZENIA przez /api/show'}
+                      </strong>
+                    </p>
                     <p>
                       Weryfikacja zasobów dla modelu 14B Vision:{' '}
                       <strong>

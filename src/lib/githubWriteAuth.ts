@@ -25,7 +25,9 @@ export function validGitHubWriteToken(expectedValue: string | undefined, authHea
 }
 
 export function requireGitHubWriteToken(req: Request, res: Response, next: NextFunction): void {
-  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || !isGitHubWritePath(req.path)) {
+  const isSyncStatus = req.method === 'POST' && req.path.toLowerCase() === '/api/github/sync'
+    && req.body?.action === 'status';
+  if (isSyncStatus || !['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || !isGitHubWritePath(req.path)) {
     next();
     return;
   }

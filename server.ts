@@ -10,6 +10,8 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import { WebSocketServer, WebSocket } from 'ws';
 import { CodexCliManager, stripAnsiCodes } from './src/lib/codexCliBridge';
+import { resolveVisionModel } from './src/kernel/visionModel';
+import { requireGitHubWriteToken } from './src/lib/githubWriteAuth';
 import {
   calculateTopologicalMetricC,
   isAriaConnectCommand,
@@ -252,6 +254,9 @@ app.use((_req, res, next) => {
   res.setHeader('Referrer-Policy', 'no-referrer');
   next();
 });
+app.post('/api/github/export', (_req, res) => res.status(410).json({ success: false, error: 'Ta trasa została wycofana.' }));
+app.post('/api/github/pull', (_req, res) => res.status(410).json({ success: false, error: 'Ta trasa została wycofana.' }));
+app.use(requireGitHubWriteToken);
 
 const sseClients = new Set<express.Response>();
 function publish(reason: string) {
@@ -309,7 +314,7 @@ const preferredOllamaModel = process.env.OLLAMA_MODEL || 'qwen2.5-vl:14b';
 const fallbackVisionModel = 'llama3.2-vision:11b';
 const ollamaLogs: string[] = [
   `[${new Date().toISOString()}] Skonfigurowano endpoint Ollama: ${ollamaBaseUrl}`,
-  `[${new Date().toISOString()}] Preferowany model 14B Vision uncensored: ${preferredOllamaModel} (fallback: ${fallbackVisionModel})`,
+  `[${new Date().toISOString()}] Preferowany tag modelu: ${preferredOllamaModel} (fallback Vision: ${fallbackVisionModel}); obsługa obrazów wymaga potwierdzenia przez /api/show`,
 ];
 
 async function getHardwareResources() {
@@ -356,7 +361,28 @@ async function checkOllamaStatus(): Promise<ModelState> {
   const resources = await getHardwareResources();
   const signal = AbortSignal.timeout(2000);
   try {
+<<<<<<< HEAD
     let selection = await resolveVisionModel({
+=======
+    const r = await fetch(`${ollamaBaseUrl}/api/tags`, { signal: controller.signal });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const data = (await r.json()) as { models?: { name?: string }[] };
+    const models = (data.models || []).map((m) => m.name || '').filter(Boolean);
+    const selected =
+      models.find((m) => m.includes('14b') || m.includes('vision') || m.includes('vl')) ||
+      models[0] ||
+      null;
+    const vision = selected
+      ? await resolveVisionModel({
+          baseUrl: ollamaBaseUrl,
+          requested: selected,
+          signal: controller.signal,
+        })
+      : null;
+    const visionCapable = vision?.visionSupported === true;
+    return {
+      reachable: true,
+>>>>>>> 82393e2 (Dziala)
       baseUrl: ollamaBaseUrl,
       requested: preferredOllamaModel,
       signal,

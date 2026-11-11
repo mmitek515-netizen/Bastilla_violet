@@ -49,3 +49,28 @@ test('mutation requests fail closed, while monitoring remains read-only', () => 
     else process.env.SVL_GITHUB_WRITE_TOKEN = before;
   }
 });
+
+test('GitHub sync status stays readable but mutations require the separate token', () => {
+  const before = process.env.SVL_GITHUB_WRITE_TOKEN;
+  try {
+    delete process.env.SVL_GITHUB_WRITE_TOKEN;
+    let nextCount = 0;
+    let httpStatus = 200;
+    const res = {
+      status(code) { httpStatus = code; return this; },
+      set() { return this; },
+      json() { return this; },
+    };
+    const next = () => { nextCount++; };
+    const request = (action) => ({ method: 'POST', path: '/api/github/sync', body: { action }, get: () => undefined });
+
+    requireGitHubWriteToken(request('status'), res, next);
+    assert.equal(nextCount, 1);
+    requireGitHubWriteToken(request('push'), res, next);
+    assert.equal(httpStatus, 403);
+    assert.equal(nextCount, 1);
+  } finally {
+    if (before === undefined) delete process.env.SVL_GITHUB_WRITE_TOKEN;
+    else process.env.SVL_GITHUB_WRITE_TOKEN = before;
+  }
+});

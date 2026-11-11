@@ -71,10 +71,11 @@ export const api = {
       body: JSON.stringify({ terminal, command, cwd }),
     }),
   githubStatus: () => request<GitHubSyncState>('/api/github/status'),
-  githubSync: (action: 'status' | 'fetch' | 'pull' | 'push') =>
+  githubSync: (action: 'status' | 'fetch' | 'pull' | 'push', writeToken?: string) =>
     request<{ ok: boolean; output: string; state: GitHubSyncState }>('/api/github/sync', {
       method: 'POST',
       body: JSON.stringify({ action }),
+      ...(writeToken ? { headers: { Authorization: `Bearer ${writeToken}` } } : {}),
     }),
   restartServices: () =>
     request<{ ok: boolean; debian13Pid: number | null; message: string }>(
