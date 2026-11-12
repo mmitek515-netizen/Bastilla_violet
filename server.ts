@@ -25,8 +25,6 @@ import {
   runPythonSvlCoreReport,
 } from './src/lib/svlAriaBridge';
 import { hasAllowedWebSocketOrigin, hasValidOperatorSession, isLoopbackAddress, isLoopbackHost, isOperatorAccessAllowed } from './src/lib/operatorAccess.mjs';
-import { requireGitHubWriteToken } from './src/lib/githubWriteAuth';
-import { resolveVisionModel } from './src/kernel/visionModel';
 import type {
   AgentName,
   AgentState,
@@ -371,28 +369,7 @@ async function checkOllamaStatus(): Promise<ModelState> {
   const resources = await getHardwareResources();
   const signal = AbortSignal.timeout(2000);
   try {
-<<<<<<< HEAD
     let selection = await resolveVisionModel({
-=======
-    const r = await fetch(`${ollamaBaseUrl}/api/tags`, { signal: controller.signal });
-    if (!r.ok) throw new Error(`HTTP ${r.status}`);
-    const data = (await r.json()) as { models?: { name?: string }[] };
-    const models = (data.models || []).map((m) => m.name || '').filter(Boolean);
-    const selected =
-      models.find((m) => m.includes('14b') || m.includes('vision') || m.includes('vl')) ||
-      models[0] ||
-      null;
-    const vision = selected
-      ? await resolveVisionModel({
-          baseUrl: ollamaBaseUrl,
-          requested: selected,
-          signal: controller.signal,
-        })
-      : null;
-    const visionCapable = vision?.visionSupported === true;
-    return {
-      reachable: true,
->>>>>>> 82393e2 (Dziala)
       baseUrl: ollamaBaseUrl,
       requested: preferredOllamaModel,
       signal,
